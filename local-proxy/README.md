@@ -54,6 +54,7 @@ Trong **LOGO! Soft Comfort**:
 | `POST` | `/read`   | `{ addr }` | `{ addr, value }` |
 | `POST` | `/write`  | `{ addr, value }` | `{ ok, addr, value }` |
 | `POST` | `/batch`  | `{ points: [{addr,type}] }` | `{ values: { addr:v }, ms, count }` |
+| `GET`  | `/time`   | — | `{ pcTimeMs, pcTimeISO, tz, tzOffsetMin }` (PC time, dùng để đồng bộ RTC) |
 
 `addr` là địa chỉ LOGO! gốc — proxy tự ánh xạ sang Modbus address.
 
@@ -77,6 +78,21 @@ curl http://localhost:3001/health
 curl -X POST http://localhost:3001/read  -H "Content-Type: application/json" -d "{\"addr\":\"Q1\"}"
 curl -X POST http://localhost:3001/write -H "Content-Type: application/json" -d "{\"addr\":\"Q1\",\"value\":1}"
 ```
+
+## Đồng bộ RTC PLC từ giờ PC
+
+LOGO! 8 reserved 6 byte trong V-memory cho Real-Time Clock — đọc/ghi trực tiếp qua Modbus:
+
+| VM | Trường | Encoding |
+|----|--------|---------|
+| VB985 | Year | offset từ 2000 (vd 26 = 2026) |
+| VB986 | Month | 1-12 |
+| VB987 | Day | 1-31 |
+| VB988 | Hour | 0-23 |
+| VB989 | Minute | 0-59 |
+| VB990 | Second | 0-59 |
+
+UI [plc.html](../plc.html) tab **⏰ Lịch** có sẵn nút **"💾 Ghi giờ PC xuống RTC PLC ngay"** — đồng bộ tức thì, không phụ thuộc NTP. Múi giờ áp dụng từ phía LOGO! (config trong Soft Comfort).
 
 ## Auto-start trên Windows (chạy nền khi boot)
 
