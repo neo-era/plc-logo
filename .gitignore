@@ -4,3 +4,8 @@ node_modules/
 config.json
 server/data/
 server/certs/
+
+# Office temporary lock files
+~$*
+.DS_Store
+Thumbs.db
