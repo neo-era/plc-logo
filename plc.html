@@ -165,6 +165,20 @@
     .hm-input .sep { display: flex; align-items: center; padding: 0 2px; color: var(--muted); font-weight: 800; }
     .timer-bulk { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
 
+    /* ── TIME SYNC GRID ── */
+    .time-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px; margin-top: 8px;
+    }
+    .time-cell {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .time-key { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .time-val { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 2px; }
+    .time-val.ok  { color: var(--green); }
+    .time-val.err { color: var(--red); }
+
     /* ── FRAME LOG ── */
     .frame-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
     .frame-toolbar .stat { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
@@ -318,10 +332,56 @@
   <section id="tab-timers" class="tab-panel">
     <div class="card">
       <h3>⏰ Lịch ON/OFF của weekly timer</h3>
-      <div class="card-sub">Cấu hình giờ bật/tắt cho 3 timer chính của chương trình. Định dạng <code>HH:MM</code> (24h). Encoding: <code>VW = (hour &lt;&lt; 8) | minute</code> theo chuẩn LOGO! 8.</div>
+      <div class="card-sub">Cấu hình giờ bật/tắt cho 3 timer chính của chương trình. Định dạng <code>HH:MM</code> (24h). Encoding: <code>VW = 0xHHMM</code> (BCD theo từng digit thập phân).</div>
       <div id="timersList"></div>
       <div class="banner banner-warn" style="margin-top:10px">
         ⚠️ <div>Thay đổi <b>có hiệu lực ngay</b> trên PLC. Đèn đang bật theo lịch cũ vẫn giữ trạng thái cho đến edge tiếp theo. Để áp dụng tức thì, tắt+bật <code>V0.1</code>/<code>V0.2</code> trong tab Trạng thái.</div>
+      </div>
+    </div>
+
+    <!-- ── ĐỒNG BỘ GIỜ HỆ THỐNG VÀO PLC qua NTP ── -->
+    <div class="card">
+      <h3>🕐 Đồng bộ giờ hệ thống vào PLC</h3>
+      <div class="card-sub">LOGO! 8 không cho ghi RTC trực tiếp qua Modbus, nhưng có sẵn NTP client. Proxy đang chạy NTP server lấy giờ từ PC này — bạn cấu hình PLC trỏ về <b>1 lần</b> trong Soft Comfort, sau đó LOGO! tự sync.</div>
+
+      <div class="time-grid">
+        <div class="time-cell">
+          <div class="time-key">Giờ PC (live)</div>
+          <div class="time-val mono" id="timePcNow">—</div>
+        </div>
+        <div class="time-cell">
+          <div class="time-key">Múi giờ</div>
+          <div class="time-val mono" id="timeTz">—</div>
+        </div>
+        <div class="time-cell">
+          <div class="time-key">NTP server</div>
+          <div class="time-val mono" id="timeNtpStatus">—</div>
+        </div>
+        <div class="time-cell">
+          <div class="time-key">Số lần PLC sync</div>
+          <div class="time-val mono" id="timeNtpCount">0</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">📍 IP máy này để gõ vào Soft Comfort:</div>
+        <div id="timeLanIps" class="mono" style="background:#0f172a;color:#86efac;padding:8px 10px;border-radius:6px;font-size:13px"></div>
+      </div>
+
+      <div class="banner banner-info" style="margin-top:12px">
+        ℹ️ <div><b>Cấu hình LOGO! Soft Comfort (1 lần):</b>
+          <ol style="margin:6px 0 0 18px;font-size:12.5px;line-height:1.7">
+            <li>Mở project → menu <b>Tools → Network configuration</b> (hoặc nhấp đôi vào LOGO! trong network view).</li>
+            <li>Tab <b>Time settings</b> → tích <b>Enable NTP synchronization</b>.</li>
+            <li><b>NTP Server IP</b>: gõ IP máy này (xem ô màu xanh phía trên, chọn cái cùng subnet với PLC <code>192.168.0.x</code>).</li>
+            <li><b>Time zone</b>: chọn <code>GMT+07:00</code> (Hà Nội/Bangkok/Jakarta).</li>
+            <li>OK → menu <b>Tools → Transfer → PC → LOGO!</b> để nạp cấu hình mạng. LOGO! sẽ tự pull lần đầu sau khi reboot và định kỳ sau đó.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="banner banner-warn" style="margin-top:8px">
+        ⚠️ <div>Trên Windows nếu thấy <code>NTP server: ✗</code> và log proxy báo <code>EADDRINUSE</code> → service <b>W32Time</b> đang giữ port 123. Mở PowerShell admin: <code>Stop-Service W32Time</code> rồi restart proxy. Hoặc dùng <code>node proxy.js --no-ntp</code> + tự setup NTP riêng.</div>
       </div>
     </div>
   </section>
@@ -940,9 +1000,91 @@ document.getElementById('tabs').addEventListener('click', e => {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
   if (tab === 'chart') drawChart();
-  if (tab === 'timers') renderTimers();
+  if (tab === 'timers') { renderTimers(); startTimeSync(); } else stopTimeSync();
   if (tab === 'frames') startFrameStream(); else stopFrameStream();
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// TIME SYNC — hiển thị giờ PC + trạng thái NTP server từ proxy
+// ═══════════════════════════════════════════════════════════════════════
+let timeTickTimer = null;     // tick mỗi giây để cập nhật đồng hồ PC
+let timeNtpTimer  = null;     // poll /time mỗi 3s để lấy stats NTP
+
+function startTimeSync() {
+  if (!timeTickTimer) timeTickTimer = setInterval(tickPcClock, 1000);
+  if (!timeNtpTimer)  timeNtpTimer  = setInterval(pollProxyTime, 3000);
+  tickPcClock();
+  pollProxyTime();
+}
+function stopTimeSync() {
+  if (timeTickTimer) clearInterval(timeTickTimer);
+  if (timeNtpTimer)  clearInterval(timeNtpTimer);
+  timeTickTimer = timeNtpTimer = null;
+}
+
+function tickPcClock() {
+  const el = document.getElementById('timePcNow');
+  if (!el) return;
+  const d = new Date();
+  el.textContent = d.toLocaleString('vi-VN', { hour12: false });
+}
+
+async function pollProxyTime() {
+  // Browser TZ luôn fill làm fallback dù proxy có lỗi gì.
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const browserOff = -new Date().getTimezoneOffset();
+  const browserTzStr = `${browserTz} (GMT${browserOff >= 0 ? '+' : '-'}${String(Math.floor(Math.abs(browserOff)/60)).padStart(2,'0')}:${String(Math.abs(browserOff)%60).padStart(2,'0')})`;
+
+  if (config.mode !== 'modbus-proxy') {
+    setText('timeNtpStatus', 'cần Modbus Proxy mode', 'err');
+    setText('timeNtpCount', '—');
+    setText('timeTz', browserTzStr + '  · browser');
+    document.getElementById('timeLanIps').textContent = '(chỉ hiển thị khi proxy đang chạy)';
+    return;
+  }
+  try {
+    const res = await fetch(config.proxyUrl + '/time', { cache: 'no-store' });
+    if (res.status === 404) throw new Error('proxy version cũ — Ctrl+C rồi `node proxy.js` lại');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+
+    const tzSign = j.tzOffsetMin >= 0 ? '+' : '-';
+    const tzHh = String(Math.floor(Math.abs(j.tzOffsetMin) / 60)).padStart(2, '0');
+    const tzMm = String(Math.abs(j.tzOffsetMin) % 60).padStart(2, '0');
+    setText('timeTz', `${j.tz} (GMT${tzSign}${tzHh}:${tzMm})`);
+
+    if (j.ntp.enabled) {
+      setText('timeNtpStatus', `✓ chạy UDP ${j.ntp.port}`, 'ok');
+    } else {
+      setText('timeNtpStatus', `✗ không chạy (port ${j.ntp.port} bị chiếm hoặc --no-ntp)`, 'err');
+    }
+    setText('timeNtpCount', j.ntp.stats.count + (j.ntp.stats.lastClient ? ` · cuối: ${j.ntp.stats.lastClient}` : ''));
+
+    const ipsEl = document.getElementById('timeLanIps');
+    if (ipsEl) {
+      if (j.ntp.lanIps && j.ntp.lanIps.length) {
+        ipsEl.innerHTML = j.ntp.lanIps.map(i =>
+          `<div>${i.ip} <span style="color:#64748b">(${i.iface})</span></div>`
+        ).join('');
+      } else {
+        ipsEl.textContent = '(không phát hiện được LAN — kiểm tra mạng)';
+      }
+    }
+  } catch (e) {
+    setText('timeNtpStatus', '✗ ' + e.message, 'err');
+    setText('timeTz', browserTzStr + '  · browser');
+  }
+}
+
+function setText(id, text, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  if (cls != null) {
+    el.classList.remove('ok', 'err');
+    if (cls) el.classList.add(cls);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // TIMER ON/OFF (Weekly Timer setpoints)

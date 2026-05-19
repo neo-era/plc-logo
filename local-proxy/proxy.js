@@ -16,6 +16,8 @@
 'use strict';
 
 const http = require('http');
+const dgram = require('dgram');
+const os = require('os');
 const ModbusRTU = require('modbus-serial');
 
 // ── CLI ARGS ──────────────────────────────────────────────────────────
@@ -37,6 +39,8 @@ const PLC_HOST  = args['plc-host']  || process.env.PLC_HOST  || '192.168.0.3';
 const PLC_PORT  = parseInt(args['plc-port']  || process.env.PLC_PORT  || '502', 10);
 const SLAVE_ID  = parseInt(args['slave-id']  || process.env.SLAVE_ID  || '1',   10);
 const HTTP_PORT = parseInt(args['port']      || process.env.HTTP_PORT || '3001',10);
+const NTP_PORT  = parseInt(args['ntp-port']  || process.env.NTP_PORT  || '123', 10);
+const NTP_OFF   = args['no-ntp'] === true || process.env.NTP_DISABLED === '1';
 const TIMEOUT   = parseInt(args['timeout']   || process.env.TIMEOUT   || '2000',10);
 
 // ── LOGO! ↔ MODBUS MAPPING ────────────────────────────────────────────
@@ -358,6 +362,19 @@ const routes = {
     frameSeq = 0;
     return { ok: true };
   },
+
+  'GET /time': async () => ({
+    pcTimeMs: Date.now(),
+    pcTimeISO: new Date().toISOString(),
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    tzOffsetMin: -new Date().getTimezoneOffset(),
+    ntp: {
+      enabled: !!ntpServer,
+      port: NTP_PORT,
+      lanIps: listLanIps(),
+      stats: ntpStats,
+    },
+  }),
 };
 
 const server = http.createServer(async (req, res) => {
@@ -375,16 +392,107 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(HTTP_PORT, '127.0.0.1', () => {
   console.log(`[http] sẵn sàng — http://localhost:${HTTP_PORT}`);
-  console.log(`[http] endpoints: GET /health, POST /read, POST /write, POST /batch`);
+  console.log(`[http] endpoints: GET /health, POST /read, POST /write, POST /batch, GET /time`);
 });
+
+// ── NTP SERVER — đồng bộ giờ PLC theo PC ─────────────────────────────
+// LOGO! 8 có sẵn NTP client; cấu hình IP máy này trong Soft Comfort →
+// Tools → Network configuration → Time settings → NTP server.
+// Sau đó LOGO! tự pull định kỳ + khi boot. Múi giờ set riêng ở LOGO!.
+const NTP_EPOCH_OFFSET = 2208988800;  // giây giữa 1900-01-01 và 1970-01-01
+const ntpStats = { count: 0, lastClient: null, lastTs: null };
+let ntpServer = null;
+
+function listLanIps() {
+  const out = [];
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const i of ifaces[name] || []) {
+      if (i.family === 'IPv4' && !i.internal) out.push({ iface: name, ip: i.address });
+    }
+  }
+  return out;
+}
+
+function toNtpTimestamp(jsMs) {
+  const totalSec = jsMs / 1000 + NTP_EPOCH_OFFSET;
+  const sec = Math.floor(totalSec);
+  const frac = Math.floor((totalSec - sec) * 0x100000000) >>> 0;
+  return { sec, frac };
+}
+
+function buildNtpResponse(reqBuf, recvMs) {
+  const buf = Buffer.alloc(48);
+  // LI(0) VN(4) Mode(4=server)
+  buf[0] = (0 << 6) | (4 << 3) | 4;
+  buf[1] = 1;        // Stratum 1 (primary reference)
+  buf[2] = 10;       // Poll interval 2^10s
+  buf[3] = 0xEC;     // Precision -20 (~1µs)
+  // Root delay (4) + Root dispersion (4) = 0 (đã alloc 0)
+  buf.write('LOCL', 12, 4, 'ascii');                       // Reference identifier
+  const refTs = toNtpTimestamp(recvMs - 1000);
+  buf.writeUInt32BE(refTs.sec, 16);
+  buf.writeUInt32BE(refTs.frac, 20);
+  // Originate timestamp = client's transmit timestamp (bytes 40..47 của req)
+  if (reqBuf.length >= 48) reqBuf.copy(buf, 24, 40, 48);
+  const recvTs = toNtpTimestamp(recvMs);
+  buf.writeUInt32BE(recvTs.sec, 32);
+  buf.writeUInt32BE(recvTs.frac, 36);
+  const txTs = toNtpTimestamp(Date.now());
+  buf.writeUInt32BE(txTs.sec, 40);
+  buf.writeUInt32BE(txTs.frac, 44);
+  return buf;
+}
+
+function startNtpServer() {
+  if (NTP_OFF) {
+    console.log('[ntp] tắt theo --no-ntp');
+    return;
+  }
+  ntpServer = dgram.createSocket('udp4');
+  ntpServer.on('message', (msg, rinfo) => {
+    if (msg.length < 48) return;
+    const resp = buildNtpResponse(msg, Date.now());
+    ntpServer.send(resp, rinfo.port, rinfo.address, err => {
+      if (err) console.warn('[ntp] send lỗi:', err.message);
+    });
+    ntpStats.count++;
+    ntpStats.lastClient = `${rinfo.address}:${rinfo.port}`;
+    ntpStats.lastTs = Date.now();
+    console.log(`[ntp] ✓ phục vụ ${rinfo.address}:${rinfo.port} (lần thứ ${ntpStats.count})`);
+  });
+  ntpServer.on('error', e => {
+    console.warn(`[ntp] lỗi: ${e.message}`);
+    if (e.code === 'EADDRINUSE') {
+      console.warn('[ntp] port 123 đang bị dùng (vd Windows Time / chronyd).');
+      console.warn('[ntp] Cách khắc phục:');
+      console.warn('  - Windows: Stop "W32Time" service hoặc disable nó nếu không dùng.');
+      console.warn('  - Hoặc chạy với --no-ntp để tắt NTP server.');
+    }
+    try { ntpServer.close(); } catch {}
+    ntpServer = null;
+  });
+  ntpServer.bind(NTP_PORT, () => {
+    const ips = listLanIps();
+    console.log(`[ntp] ✓ NTP server sẵn sàng trên UDP ${NTP_PORT}`);
+    if (ips.length) {
+      console.log('[ntp] IP LAN để cấu hình trong LOGO! Soft Comfort:');
+      for (const i of ips) console.log(`        ${i.ip}  (${i.iface})`);
+    } else {
+      console.log('[ntp] ⚠️ không phát hiện LAN interface — kiểm tra mạng');
+    }
+  });
+}
 
 // ── BOOTSTRAP ─────────────────────────────────────────────────────────
 console.log(`[proxy] target PLC = ${PLC_HOST}:${PLC_PORT} (slave ${SLAVE_ID}), timeout ${TIMEOUT}ms`);
 connectModbus();
+startNtpServer();
 
 ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => {
   console.log('[proxy] đang dừng...');
   try { client.close(() => {}); } catch {}
+  try { ntpServer && ntpServer.close(); } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500);
 }));
