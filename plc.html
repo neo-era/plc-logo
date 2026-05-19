@@ -1003,6 +1003,8 @@ function readHmInput(idPrefix) {
   return { h, m, str: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') };
 }
 
+// Full rebuild — gọi khi vào tab, sau Save, hoặc Reload. KHÔNG gọi trong polling
+// vì sẽ huỷ giá trị user đang gõ.
 function renderTimers() {
   const root = document.getElementById('timersList');
   if (!root) return;
@@ -1011,25 +1013,18 @@ function renderTimers() {
     const offVw = lastState.V[t.offAddr];
     const on    = vwToTime(onVw);
     const off   = vwToTime(offVw);
-    const qOn   = !!lastState.Q[t.statusAddr];
-    const onHex  = onVw  != null ? onVw.toString(16).padStart(4,'0').toUpperCase()  : '----';
-    const offHex = offVw != null ? offVw.toString(16).padStart(4,'0').toUpperCase() : '----';
-    return `<div class="timer-card">
+    return `<div class="timer-card" id="tcard_${t.id}">
       <h4>${escapeHtml(t.label)}</h4>
-      <div class="meta">
-        ${t.onAddr}=${onVw ?? '—'} (0x${onHex}) ·
-        ${t.offAddr}=${offVw ?? '—'} (0x${offHex}) ·
-        ${t.statusAddr}: <b style="color:${qOn ? 'var(--green)' : 'var(--muted)'}">${qOn ? 'ĐANG BẬT' : 'tắt'}</b>
-      </div>
+      <div class="meta" id="tmeta_${t.id}"></div>
       <div class="timer-row on">
         <div class="ticon">▶</div>
-        <div class="tlabel">Giờ BẬT (${t.onAddr})<b>${on.str}</b></div>
+        <div class="tlabel">Giờ BẬT (${t.onAddr})<b id="tcur_${t.id}_on">${on.str}</b></div>
         ${hmInputHtml('tin_' + t.id + '_on', on.h, on.m)}
         <button class="btn btn-primary" onclick="saveTimerTime('${t.onAddr}', 'tin_${t.id}_on', '▶ Giờ BẬT ${t.id}')">💾 Lưu</button>
       </div>
       <div class="timer-row off">
         <div class="ticon">⏹</div>
-        <div class="tlabel">Giờ TẮT (${t.offAddr})<b>${off.str}</b></div>
+        <div class="tlabel">Giờ TẮT (${t.offAddr})<b id="tcur_${t.id}_off">${off.str}</b></div>
         ${hmInputHtml('tin_' + t.id + '_off', off.h, off.m)}
         <button class="btn btn-primary" onclick="saveTimerTime('${t.offAddr}', 'tin_${t.id}_off', '⏹ Giờ TẮT ${t.id}')">💾 Lưu</button>
       </div>
@@ -1039,6 +1034,33 @@ function renderTimers() {
       </div>
     </div>`;
   }).join('');
+  updateTimerDisplay();
+}
+
+// Cập nhật chỉ phần read-only (meta + giá trị hiện tại + trạng thái Q).
+// KHÔNG động vào ô <input> HH/MM → an toàn để gọi trong polling.
+function updateTimerDisplay() {
+  for (const t of TIMER_DEFS) {
+    const onVw  = lastState.V[t.onAddr];
+    const offVw = lastState.V[t.offAddr];
+    const on    = vwToTime(onVw);
+    const off   = vwToTime(offVw);
+    const qOn   = !!lastState.Q[t.statusAddr];
+    const onHex  = onVw  != null ? onVw.toString(16).padStart(4, '0').toUpperCase()  : '----';
+    const offHex = offVw != null ? offVw.toString(16).padStart(4, '0').toUpperCase() : '----';
+
+    const meta = document.getElementById('tmeta_' + t.id);
+    if (meta) {
+      meta.innerHTML =
+        `${t.onAddr}=${onVw ?? '—'} (0x${onHex}) · ` +
+        `${t.offAddr}=${offVw ?? '—'} (0x${offHex}) · ` +
+        `${t.statusAddr}: <b style="color:${qOn ? 'var(--green)' : 'var(--muted)'}">${qOn ? 'ĐANG BẬT' : 'tắt'}</b>`;
+    }
+    const onEl  = document.getElementById('tcur_' + t.id + '_on');
+    const offEl = document.getElementById('tcur_' + t.id + '_off');
+    if (onEl)  onEl.textContent  = on.str;
+    if (offEl) offEl.textContent = off.str;
+  }
 }
 
 async function saveTimerTime(addr, inputId, label) {
@@ -1535,7 +1557,7 @@ async function pollOnce() {
   if (currentTab === 'output') renderOutputs();
   else if (currentTab === 'status') renderStatus();
   else if (currentTab === 'vars') renderVars();
-  else if (currentTab === 'timers') renderTimers();
+  else if (currentTab === 'timers') updateTimerDisplay();
   else if (currentTab === 'chart') drawChart();
 }
 
