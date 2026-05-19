@@ -1,0 +1,43 @@
+{
+  "stationId": "STN-001",
+  "stationName": "Tủ điều khiển Lê Lợi",
+  "gatewayToken": "REPLACE_WITH_TOKEN_FROM_SERVER",
+
+  "mqtt": {
+    "url": "mqtts://your-vps-domain:8883",
+    "username": "STN-001",
+    "password": "same-as-gatewayToken",
+    "rejectUnauthorized": true
+  },
+
+  "plc": {
+    "host": "192.168.0.3",
+    "port": 502,
+    "slaveId": 1,
+    "timeoutMs": 3000,
+    "pollMs": 2000
+  },
+
+  "points": {
+    "inputs":  [
+      { "addr": "I1", "label": "Photocell" },
+      { "addr": "I2", "label": "Nút bấm tay" },
+      { "addr": "I3", "label": "Cảm biến cửa tủ" },
+      { "addr": "I4", "label": "Báo quá tải" }
+    ],
+    "outputs": [
+      { "addr": "Q1", "label": "Đèn LED tuyến A" },
+      { "addr": "Q2", "label": "Đèn LED tuyến B" },
+      { "addr": "Q3", "label": "Contactor chính" },
+      { "addr": "Q4", "label": "Đèn cảnh báo" }
+    ],
+    "memory":  [
+      { "addr": "M1", "label": "Chế độ AUTO" },
+      { "addr": "M2", "label": "Cảnh báo ON" }
+    ],
+    "variables": [
+      { "addr": "VW0", "type": "word", "label": "Timer SP (giây)" },
+      { "addr": "VW2", "type": "word", "label": "Counter giá trị" }
+    ]
+  }
+}

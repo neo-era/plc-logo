@@ -1,0 +1,21 @@
+{
+  "name": "plc-server",
+  "version": "0.1.0",
+  "description": "MQTT broker + REST API + WebSocket cho hệ điều khiển PLC LOGO! đa trạm",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev":   "node --watch server.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "aedes": "^0.51.3",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.5.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "mqtt": "^5.10.1",
+    "ws": "^8.18.0"
+  }
+}

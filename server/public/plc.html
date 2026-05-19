@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Điều khiển PLC — đa trạm</title>
+  <meta name="theme-color" content="#0f172a">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    :root{--navy:#0f172a;--orange:#f97316;--green:#10b981;--sky:#0ea5e9;--red:#ef4444;--amber:#f59e0b;
+      --text:#1e293b;--muted:#64748b;--border:#e2e8f0;--bg:#f8fafc;--white:#fff;
+      --safe-top:env(safe-area-inset-top);--safe-bottom:env(safe-area-inset-bottom)}
+    html,body{font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--bg);min-height:100vh;min-height:100dvh;overflow-x:hidden}
+    code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+    .topbar{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,var(--navy),#1e3a5f);color:#fff;padding:calc(12px + var(--safe-top)) 16px 12px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+    .topbar h1{font-size:clamp(14px,4vw,17px);font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:linear-gradient(135deg,#fbbf24,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .topbar .back{background:rgba(255,255,255,.1);color:#fff;border:none;padding:6px 10px;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer}
+    .topbar .user{font-size:12px;color:#cbd5e1;display:flex;align-items:center;gap:6px}
+    .topbar .user button{background:transparent;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit}
+    .wsdot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+    .wsdot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+    .wsdot.err{background:var(--red)}
+
+    main{max-width:1100px;margin:0 auto;padding:16px;padding-bottom:calc(32px + var(--safe-bottom))}
+    .card{background:var(--white);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+    .card h3{font-size:14px;font-weight:800;color:var(--navy);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+
+    .fg{margin-bottom:10px}
+    .fg label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+    .fg input,.fg select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit;background:var(--white);color:var(--text);outline:none;transition:border-color .15s}
+    .fg input:focus{border-color:var(--orange)}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width:480px){.form-row{grid-template-columns:1fr}}
+
+    .btn{padding:10px 16px;border-radius:9px;border:none;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px}
+    .btn:active{transform:scale(.97)}
+    .btn-primary{background:linear-gradient(135deg,var(--orange),#ea580c);color:#fff;box-shadow:0 4px 12px rgba(249,115,22,.3)}
+    .btn-outline{background:var(--white);color:var(--navy);border:1.5px solid var(--border)}
+    .btn-danger{background:var(--red);color:#fff}
+    .btn-ghost{background:transparent;color:var(--muted);border:1.5px dashed var(--border)}
+
+    /* LOGIN */
+    .login-wrap{max-width:380px;margin:80px auto;padding:0 16px}
+    .login-wrap .card{padding:28px 24px}
+    .login-wrap h2{font-size:20px;font-weight:800;color:var(--navy);text-align:center;margin-bottom:6px}
+    .login-wrap p{text-align:center;font-size:13px;color:var(--muted);margin-bottom:20px}
+
+    /* STATION LIST */
+    .station-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+    .station-card{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .2s,transform .1s}
+    .station-card:hover{border-color:var(--orange)}
+    .station-card:active{transform:scale(.99)}
+    .station-card .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .station-card .name{font-weight:800;font-size:15px;color:var(--navy)}
+    .station-card .id{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:8px}
+    .station-card .region{font-size:11px;color:var(--muted);margin-bottom:10px}
+    .pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--bg);color:var(--muted)}
+    .pill.online{background:#d1fae5;color:#047857}
+    .pill.offline{background:#fee2e2;color:#b91c1c}
+    .station-card .mini-state{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+    .mini-led{width:14px;height:14px;border-radius:50%;background:var(--bg);border:1.5px solid var(--border);box-shadow:inset 0 1px 2px rgba(0,0,0,.06)}
+    .mini-led.on{background:var(--green);border-color:var(--green);box-shadow:0 0 6px rgba(16,185,129,.5)}
+
+    /* STATION DETAIL */
+    .tabs{display:flex;overflow-x:auto;background:var(--white);border-bottom:1px solid var(--border);position:sticky;top:calc(54px + var(--safe-top));z-index:40;scrollbar-width:none}
+    .tabs::-webkit-scrollbar{display:none}
+    .tab-btn{flex:1 0 auto;padding:12px 16px;background:none;border:none;font-family:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+    .tab-btn.active{color:var(--orange);border-bottom-color:var(--orange)}
+    .tab-panel{display:none}.tab-panel.active{display:block}
+
+    .grid-output{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+    .q-card{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:border-color .2s}
+    .q-card.on{border-color:var(--green);background:linear-gradient(180deg,#ecfdf5,#fff)}
+    .q-head{display:flex;align-items:center;justify-content:space-between}
+    .q-addr{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.05em;font-family:'JetBrains Mono',monospace}
+    .q-state{font-size:12px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--bg);color:var(--muted)}
+    .q-card.on .q-state{background:#d1fae5;color:#047857}
+    .q-card.off .q-state{background:#fee2e2;color:#b91c1c}
+    .q-label{font-size:14px;font-weight:700}
+    .q-actions{display:flex;gap:6px;margin-top:auto}
+    .q-actions .btn{flex:1;padding:8px;font-size:12px;min-height:36px}
+
+    .io-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+    .io-cell{background:var(--bg);border-radius:8px;padding:10px 6px;text-align:center;border:1.5px solid transparent;transition:all .2s}
+    .io-cell.on{background:linear-gradient(180deg,#d1fae5,#a7f3d0);border-color:var(--green)}
+    .io-addr{font-size:10px;font-weight:800;color:var(--muted);font-family:'JetBrains Mono',monospace}
+    .io-cell.on .io-addr{color:#047857}
+    .io-led{width:24px;height:24px;border-radius:50%;margin:6px auto;background:var(--white);box-shadow:inset 0 2px 4px rgba(0,0,0,.1);border:2px solid var(--border)}
+    .io-cell.on .io-led{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(16,185,129,.6),inset 0 -2px 4px rgba(0,0,0,.2)}
+    .io-name{font-size:10px;color:var(--muted);line-height:1.2;min-height:22px}
+
+    .var-row{display:grid;grid-template-columns:1fr 100px 120px auto;gap:8px;align-items:center;padding:10px;border:1.5px solid var(--border);border-radius:9px;margin-bottom:8px}
+    @media (max-width:600px){.var-row{grid-template-columns:1fr 1fr;gap:6px}.var-row>*{font-size:12px}}
+    .var-label{font-weight:700}.var-addr{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)}
+    .var-row input{padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%}
+    .var-row .btn{padding:8px 12px;font-size:12px;min-height:32px}
+
+    /* CMD LOG */
+    .log-row{display:grid;grid-template-columns:140px 80px 100px 1fr 90px;gap:8px;padding:8px;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
+    .log-row:last-child{border-bottom:none}
+    .log-row.head{font-weight:800;color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.05em}
+    .log-status{font-weight:700;padding:2px 8px;border-radius:8px;text-align:center}
+    .log-status.ack{background:#d1fae5;color:#047857}
+    .log-status.error{background:#fee2e2;color:#b91c1c}
+    .log-status.sent{background:#fef3c7;color:#92400e}
+
+    /* ADMIN */
+    .admin-table{width:100%;font-size:13px;border-collapse:collapse}
+    .admin-table th,.admin-table td{padding:8px;border-bottom:1px solid var(--border);text-align:left}
+    .admin-table th{background:var(--bg);font-size:11px;text-transform:uppercase;color:var(--muted)}
+
+    #toast{position:fixed;bottom:calc(20px + var(--safe-bottom));left:50%;transform:translateX(-50%) translateY(150%);background:var(--navy);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:9999;transition:transform .3s;max-width:90vw;text-align:center}
+    #toast.show{transform:translateX(-50%) translateY(0)}
+
+    .empty{text-align:center;padding:24px;color:var(--muted);font-size:13px}
+    .banner{padding:10px 14px;border-radius:9px;font-size:12px;line-height:1.5;display:flex;gap:10px;align-items:flex-start;margin-bottom:12px}
+    .banner-warn{background:#fef3c7;color:#92400e;border-left:3px solid var(--amber)}
+    .banner-info{background:#dbeafe;color:#1e40af;border-left:3px solid var(--sky)}
+    .token-box{background:#0f172a;color:#86efac;padding:12px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:12px;word-break:break-all;margin:10px 0}
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR (chỉ hiện sau khi login) -->
+<div class="topbar" id="topbar" style="display:none">
+  <button class="back" id="backBtn" style="display:none" onclick="showStationList()">← Trạm</button>
+  <h1 id="topbarTitle">⚡ PLC Đa trạm</h1>
+  <span class="user">
+    <span class="wsdot" id="wsDot"></span>
+    <span id="userName">—</span>
+    <button onclick="logout()">Thoát</button>
+  </span>
+</div>
+
+<main>
+  <!-- LOGIN -->
+  <div id="loginView" class="login-wrap">
+    <div class="card">
+      <h2>⚡ PLC Trung tâm</h2>
+      <p>Đăng nhập để điều khiển trạm PLC</p>
+      <div class="fg"><label>Tên đăng nhập</label><input id="loginUser" autocomplete="username"></div>
+      <div class="fg"><label>Mật khẩu</label><input id="loginPass" type="password" autocomplete="current-password"></div>
+      <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Đăng nhập</button>
+    </div>
+  </div>
+
+  <!-- STATION LIST -->
+  <div id="listView" style="display:none">
+    <div class="card">
+      <h3>📍 Danh sách trạm <span class="pill" id="stationCount" style="margin-left:auto">0</span></h3>
+      <div class="station-grid" id="stationGrid"></div>
+    </div>
+    <div class="card" id="adminPanel" style="display:none">
+      <h3>⚙ Quản trị (admin)</h3>
+      <div class="form-row">
+        <div class="fg"><label>Mã trạm (id)</label><input id="newStnId" placeholder="STN-001"></div>
+        <div class="fg"><label>Tên trạm</label><input id="newStnName" placeholder="Tủ Lê Lợi"></div>
+      </div>
+      <div class="fg"><label>Khu vực (tùy chọn)</label><input id="newStnRegion" placeholder="Phường Bến Nghé"></div>
+      <button class="btn btn-primary" onclick="createStation()">+ Tạo trạm mới</button>
+      <div id="newStnResult"></div>
+    </div>
+  </div>
+
+  <!-- STATION DETAIL -->
+  <div id="detailView" style="display:none">
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="output">📤 Ngõ ra</button>
+      <button class="tab-btn" data-tab="status">💡 Trạng thái</button>
+      <button class="tab-btn" data-tab="vars">🔢 Biến số</button>
+      <button class="tab-btn" data-tab="log">📜 Log lệnh</button>
+    </nav>
+
+    <section id="tab-output" class="tab-panel active">
+      <div class="card">
+        <h3>📤 Điều khiển ngõ ra (Q)</h3>
+        <div class="grid-output" id="outputGrid"></div>
+      </div>
+    </section>
+    <section id="tab-status" class="tab-panel">
+      <div class="card"><h3>📥 Ngõ vào (I)</h3><div class="io-grid" id="inputGrid"></div></div>
+      <div class="card"><h3>💡 Ngõ ra (Q)</h3><div class="io-grid" id="qGrid"></div></div>
+      <div class="card"><h3>🚩 Cờ nhớ (M)</h3><div class="io-grid" id="mGrid"></div></div>
+    </section>
+    <section id="tab-vars" class="tab-panel">
+      <div class="card"><h3>🔢 Biến số (VW, VD)</h3><div id="varsList"></div></div>
+    </section>
+    <section id="tab-log" class="tab-panel">
+      <div class="card">
+        <h3>📜 Lệnh đã gửi <button class="btn btn-outline" style="margin-left:auto;font-size:11px;padding:4px 10px;min-height:auto" onclick="loadCmdLog()">↻</button></h3>
+        <div id="cmdLog"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+const API = location.origin + '/api';
+let token = localStorage.getItem('plcToken') || '';
+let user  = JSON.parse(localStorage.getItem('plcUser') || 'null');
+let stations = [];      // [{id, name, region, online, state, config, lastSeen}]
+let currentStn = null;  // station đang xem chi tiết
+let currentTab = 'output';
+let ws = null;
+
+// ═══════════════════════════════════════════════════════════════════
+// UTIL
+// ═══════════════════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtTime(ts) { if (!ts) return '—'; const d = new Date(ts); return d.toLocaleString('vi-VN'); }
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + path, { ...opts, headers });
+  if (res.status === 401) { logout(); throw new Error('Chưa đăng nhập'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════════
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  if (!username) return showToast('Nhập tên đăng nhập');
+  try {
+    const r = await fetch(API + '/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username, password }) }).then(r => r.json());
+    if (!r.token) throw new Error(r.error || 'Sai thông tin');
+    token = r.token; user = r.user;
+    localStorage.setItem('plcToken', token);
+    localStorage.setItem('plcUser', JSON.stringify(user));
+    boot();
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+function logout() {
+  token = ''; user = null;
+  localStorage.removeItem('plcToken');
+  localStorage.removeItem('plcUser');
+  if (ws) { try { ws.close(); } catch{} ws = null; }
+  document.getElementById('topbar').style.display = 'none';
+  document.getElementById('loginView').style.display = 'block';
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WEBSOCKET — realtime state push
+// ═══════════════════════════════════════════════════════════════════
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+  ws.onopen  = () => { document.getElementById('wsDot').className = 'wsdot ok'; };
+  ws.onclose = () => {
+    document.getElementById('wsDot').className = 'wsdot err';
+    if (token) setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => { document.getElementById('wsDot').className = 'wsdot err'; };
+  ws.onmessage = e => {
+    let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    const stn = stations.find(s => s.id === msg.stationId);
+    if (!stn) return;
+    if (msg.type === 'state') {
+      stn.state = msg.data;
+      stn.lastSeen = msg.data.ts;
+      if (currentStn && currentStn.id === stn.id) {
+        currentStn = stn;
+        renderDetail();
+      } else if (document.getElementById('listView').style.display !== 'none') {
+        renderStationList();
+      }
+    } else if (msg.type === 'online') {
+      stn.online = msg.online;
+      renderStationList();
+      if (currentStn && currentStn.id === stn.id) renderDetail();
+    } else if (msg.type === 'ack') {
+      const ok = msg.data.ok;
+      showToast(`${ok ? '✅' : '❌'} ${stn.id}/${msg.data.addr} ${ok ? 'OK' : msg.data.error || 'lỗi'}`);
+      if (currentStn && currentStn.id === stn.id && currentTab === 'log') loadCmdLog();
+    }
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VIEWS
+// ═══════════════════════════════════════════════════════════════════
+async function boot() {
+  document.getElementById('topbar').style.display = 'flex';
+  document.getElementById('userName').textContent = `${user.username} (${user.role})`;
+  document.getElementById('adminPanel').style.display = user.role === 'admin' ? 'block' : 'none';
+  document.getElementById('loginView').style.display = 'none';
+  await loadStations();
+  showStationList();
+  connectWS();
+}
+
+async function loadStations() {
+  try { stations = await api('/stations'); }
+  catch (e) { showToast('❌ ' + e.message); }
+}
+
+function showStationList() {
+  currentStn = null;
+  document.getElementById('listView').style.display = 'block';
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('backBtn').style.display = 'none';
+  document.getElementById('topbarTitle').textContent = '⚡ PLC Đa trạm';
+  renderStationList();
+}
+
+function renderStationList() {
+  document.getElementById('stationCount').textContent = stations.length;
+  const grid = document.getElementById('stationGrid');
+  if (!stations.length) {
+    grid.innerHTML = '<div class="empty">Chưa có trạm nào. ' + (user.role === 'admin' ? 'Tạo trạm bên dưới.' : 'Liên hệ admin để tạo trạm.') + '</div>';
+    return;
+  }
+  grid.innerHTML = stations.map(s => {
+    const qList = (s.state?.Q && s.config?.outputs) ? s.config.outputs.slice(0, 8) : [];
+    return `<div class="station-card" onclick="openStation('${s.id}')">
+      <div class="head">
+        <span class="name">${escapeHtml(s.name)}</span>
+        <span class="pill ${s.online ? 'online' : 'offline'}">${s.online ? '● Online' : '○ Offline'}</span>
+      </div>
+      <div class="id">${escapeHtml(s.id)}</div>
+      ${s.region ? `<div class="region">📍 ${escapeHtml(s.region)}</div>` : ''}
+      <div class="mini-state">${qList.map(o => `<div class="mini-led ${s.state?.Q?.[o.addr] ? 'on' : ''}" title="${escapeHtml(o.label)} (${o.addr})"></div>`).join('')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${s.lastSeen ? 'Cập nhật: ' + new Date(s.lastSeen).toLocaleTimeString('vi-VN') : 'Chưa có dữ liệu'}</div>
+    </div>`;
+  }).join('');
+}
+
+function openStation(id) {
+  currentStn = stations.find(s => s.id === id);
+  if (!currentStn) return;
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'block';
+  document.getElementById('backBtn').style.display = 'inline-flex';
+  document.getElementById('topbarTitle').textContent = currentStn.name;
+  currentTab = 'output';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'output'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-output'));
+  renderDetail();
+}
+
+document.getElementById('tabs').addEventListener('click', e => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  currentTab = btn.dataset.tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === currentTab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + currentTab));
+  if (currentTab === 'log') loadCmdLog();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER DETAIL
+// ═══════════════════════════════════════════════════════════════════
+function renderDetail() {
+  if (!currentStn) return;
+  const s = currentStn;
+  const cfg = s.config || {};
+  const state = s.state || { I:{}, Q:{}, M:{}, V:{} };
+
+  // OUTPUT GRID
+  const outs = cfg.outputs || [];
+  document.getElementById('outputGrid').innerHTML = outs.length ? outs.map(o => {
+    const on = !!state.Q?.[o.addr];
+    return `<div class="q-card ${on ? 'on' : 'off'}">
+      <div class="q-head"><span class="q-addr">${o.addr}</span><span class="q-state">${on ? '● ON' : '○ OFF'}</span></div>
+      <div class="q-label">${escapeHtml(o.label)}</div>
+      <div class="q-actions">
+        <button class="btn ${on ? 'btn-outline' : 'btn-primary'}" onclick="sendCmd('${o.addr}', true)">ON</button>
+        <button class="btn ${on ? 'btn-danger' : 'btn-outline'}" onclick="sendCmd('${o.addr}', false)">OFF</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">Trạm chưa cấu hình ngõ ra</div>';
+
+  // STATUS GRIDS
+  renderIoGroup('inputGrid', cfg.inputs || [], state.I);
+  renderIoGroup('qGrid',     cfg.outputs || [], state.Q);
+  renderIoGroup('mGrid',     cfg.memory || [], state.M);
+
+  // VARIABLES
+  const vars = cfg.variables || [];
+  document.getElementById('varsList').innerHTML = vars.length ? vars.map((v, i) => {
+    const cur = state.V?.[v.addr];
+    return `<div class="var-row">
+      <div><div class="var-label">${escapeHtml(v.label)}</div><div class="var-addr">${v.addr} (${v.type})</div></div>
+      <div><div class="var-label" style="text-align:center;font-family:'JetBrains Mono',monospace;color:var(--orange)">${cur == null ? '—' : cur}</div><div class="var-addr" style="text-align:center">Hiện tại</div></div>
+      <input id="varInput_${i}" type="number" placeholder="Giá trị mới">
+      <button class="btn btn-primary" onclick="writeVar(${i})">✏ Ghi</button>
+    </div>`;
+  }).join('') : '<div class="empty">Trạm chưa cấu hình biến số</div>';
+}
+
+function renderIoGroup(elId, list, stateObj) {
+  const el = document.getElementById(elId);
+  if (!list.length) { el.innerHTML = '<div class="empty">—</div>'; return; }
+  el.innerHTML = list.map(it => {
+    const on = !!stateObj?.[it.addr];
+    return `<div class="io-cell ${on ? 'on' : 'off'}">
+      <div class="io-addr">${it.addr}</div><div class="io-led"></div>
+      <div class="io-name">${escapeHtml(it.label || '')}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// COMMANDS
+// ═══════════════════════════════════════════════════════════════════
+async function sendCmd(addr, value) {
+  if (!currentStn) return;
+  if (!currentStn.online) { if (!confirm('Trạm đang offline — gửi lệnh sẽ chờ trạm online lại. Tiếp tục?')) return; }
+  try {
+    await api(`/stations/${currentStn.id}/cmd`, { method: 'POST', body: JSON.stringify({ addr, value }) });
+    showToast(`📤 ${addr} → ${value === true || value === 1 ? 'ON' : value === false || value === 0 ? 'OFF' : value}`);
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+async function writeVar(idx) {
+  const v = currentStn.config?.variables?.[idx];
+  if (!v) return;
+  const input = document.getElementById('varInput_' + idx);
+  const val = parseInt(input.value);
+  if (!Number.isFinite(val)) return showToast('⚠️ Nhập số hợp lệ');
+  try {
+    await api(`/stations/${currentStn.id}/cmd`, { method: 'POST', body: JSON.stringify({ addr: v.addr, value: val }) });
+    showToast(`✏ ${v.addr} = ${val}`);
+    input.value = '';
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+async function loadCmdLog() {
+  if (!currentStn) return;
+  try {
+    const rows = await api(`/stations/${currentStn.id}/commands?limit=50`);
+    const el = document.getElementById('cmdLog');
+    if (!rows.length) { el.innerHTML = '<div class="empty">Chưa có lệnh nào</div>'; return; }
+    el.innerHTML = `<div class="log-row head"><span>Thời gian</span><span>Địa chỉ</span><span>Giá trị</span><span>Bởi</span><span>Trạng thái</span></div>` +
+      rows.map(r => `<div class="log-row">
+        <span>${fmtTime(r.sent_at)}</span>
+        <span class="mono">${r.addr}</span>
+        <span class="mono">${r.value}</span>
+        <span>${escapeHtml(r.by_user || '—')}</span>
+        <span class="log-status ${r.status}" title="${escapeHtml(r.error || '')}">${r.status}</span>
+      </div>`).join('');
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ADMIN: TẠO TRẠM
+// ═══════════════════════════════════════════════════════════════════
+async function createStation() {
+  const id = document.getElementById('newStnId').value.trim();
+  const name = document.getElementById('newStnName').value.trim();
+  const region = document.getElementById('newStnRegion').value.trim();
+  if (!id || !name) return showToast('⚠️ Nhập id + tên trạm');
+  // config mặc định — admin chỉnh sau qua API
+  const config = {
+    outputs:  [{addr:'Q1',label:'Đèn 1'},{addr:'Q2',label:'Đèn 2'},{addr:'Q3',label:'Contactor'},{addr:'Q4',label:'Cảnh báo'}],
+    inputs:   [{addr:'I1',label:'Cảm biến 1'},{addr:'I2',label:'Cảm biến 2'}],
+    memory:   [{addr:'M1',label:'Cờ AUTO'}],
+    variables:[{addr:'VW0',type:'word',label:'Timer SP'}],
+  };
+  try {
+    const r = await api('/stations', { method: 'POST', body: JSON.stringify({ id, name, region, config }) });
+    document.getElementById('newStnResult').innerHTML = `
+      <div class="banner banner-warn" style="margin-top:12px">
+        ⚠️ <div><b>LƯU NGAY</b> các thông tin sau vào <code>gateway/config.json</code>. Token chỉ hiện 1 lần.</div>
+      </div>
+      <div class="token-box">stationId: ${escapeHtml(r.id)}
+gatewayToken: ${escapeHtml(r.gatewayToken)}
+mqtt.username: ${escapeHtml(r.mqttUsername)}
+mqtt.password: ${escapeHtml(r.gatewayToken)}</div>
+      <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${r.gatewayToken}').then(()=>showToast('📋 Đã copy token'))">📋 Copy token</button>`;
+    document.getElementById('newStnId').value = '';
+    document.getElementById('newStnName').value = '';
+    document.getElementById('newStnRegion').value = '';
+    await loadStations();
+    renderStationList();
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+if (token && user) boot();
+document.getElementById('loginPass')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>

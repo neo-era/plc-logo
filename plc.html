@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Điều khiển PLC — LOGO! 230RCE</title>
+  <meta name="theme-color" content="#0f172a">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --navy: #0f172a; --orange: #f97316; --pink: #db2777;
+      --green: #10b981; --sky: #0ea5e9; --red: #ef4444; --amber: #f59e0b;
+      --text: #1e293b; --muted: #64748b; --border: #e2e8f0; --bg: #f8fafc; --white: #fff;
+      --safe-top: env(safe-area-inset-top); --safe-bottom: env(safe-area-inset-bottom);
+    }
+    html { -webkit-text-size-adjust: 100%; }
+    html, body { font-family: 'Inter', system-ui, sans-serif; color: var(--text); background: var(--bg); min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
+    code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: linear-gradient(135deg, var(--navy), #1e3a5f);
+      color: #fff; padding: calc(12px + var(--safe-top)) 16px 12px;
+      display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    .topbar h1 {
+      font-size: clamp(14px, 4vw, 17px); font-weight: 800; flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      background: linear-gradient(135deg,#fbbf24,#f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .conn { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #cbd5e1; }
+    .conn .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 0 rgba(0,0,0,.3); }
+    .conn.ok .dot { background: var(--green); animation: pulse 2s ease-out infinite; }
+    .conn.err .dot { background: var(--red); }
+    .conn.demo .dot { background: var(--amber); }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)} 100%{box-shadow:0 0 0 8px rgba(16,185,129,0)} }
+
+    /* ── TABS ── */
+    .tabs {
+      display: flex; overflow-x: auto; background: var(--white); border-bottom: 1px solid var(--border);
+      position: sticky; top: calc(54px + var(--safe-top)); z-index: 40;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      flex: 1 0 auto; padding: 12px 16px; background: none; border: none; font-family: inherit;
+      font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; white-space: nowrap;
+      border-bottom: 3px solid transparent; transition: color .15s, border-color .15s;
+    }
+    .tab-btn.active { color: var(--orange); border-bottom-color: var(--orange); }
+    .tab-btn:active { background: var(--bg); }
+
+    /* ── MAIN ── */
+    main { max-width: 900px; margin: 0 auto; padding: 16px; padding-bottom: calc(32px + var(--safe-bottom)); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .card {
+      background: var(--white); border-radius: 14px; padding: 16px;
+      margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .card h3 { font-size: 14px; font-weight: 800; color: var(--navy); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .card-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+    /* ── FORM ── */
+    .fg { margin-bottom: 10px; }
+    .fg label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+    .fg input, .fg select, .fg textarea {
+      width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 9px;
+      font-size: 14px; font-family: inherit; background: var(--white); color: var(--text); outline: none;
+      transition: border-color .15s;
+    }
+    .fg input:focus, .fg select:focus, .fg textarea:focus { border-color: var(--orange); }
+    .fg .mono input { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
+
+    /* ── BUTTONS ── */
+    .btn {
+      padding: 10px 16px; border-radius: 9px; border: none; font-family: inherit;
+      font-size: 13px; font-weight: 700; cursor: pointer; transition: transform .1s, box-shadow .15s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: linear-gradient(135deg, var(--orange), #ea580c); color: #fff; box-shadow: 0 4px 12px rgba(249,115,22,.3); }
+    .btn-outline { background: var(--white); color: var(--navy); border: 1.5px solid var(--border); }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1.5px dashed var(--border); }
+
+    /* ── OUTPUT CARDS (Q1...Qn) ── */
+    .grid-output { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .q-card {
+      background: var(--white); border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color .2s;
+    }
+    .q-card.on { border-color: var(--green); background: linear-gradient(180deg, #ecfdf5, #fff); }
+    .q-card.off { background: var(--white); }
+    .q-head { display: flex; align-items: center; justify-content: space-between; }
+    .q-addr { font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: .05em; font-family: 'JetBrains Mono', monospace; }
+    .q-state { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 12px; background: var(--bg); color: var(--muted); }
+    .q-card.on .q-state { background: #d1fae5; color: #047857; }
+    .q-card.off .q-state { background: #fee2e2; color: #b91c1c; }
+    .q-label { font-size: 14px; font-weight: 700; color: var(--text); }
+    .q-actions { display: flex; gap: 6px; margin-top: auto; }
+    .q-actions .btn { flex: 1; padding: 8px; font-size: 12px; min-height: 36px; }
+
+    /* ── IO STATUS GRID ── */
+    .io-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+    .io-cell {
+      background: var(--bg); border-radius: 8px; padding: 10px 6px; text-align: center;
+      border: 1.5px solid transparent; transition: all .2s;
+    }
+    .io-cell.on { background: linear-gradient(180deg, #d1fae5, #a7f3d0); border-color: var(--green); }
+    .io-cell.off { background: var(--bg); }
+    .io-addr { font-size: 10px; font-weight: 800; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .io-cell.on .io-addr { color: #047857; }
+    .io-led {
+      width: 24px; height: 24px; border-radius: 50%; margin: 6px auto;
+      background: var(--white); box-shadow: inset 0 2px 4px rgba(0,0,0,.1);
+      border: 2px solid var(--border);
+    }
+    .io-cell.on .io-led {
+      background: var(--green); border-color: var(--green);
+      box-shadow: 0 0 12px rgba(16,185,129,.6), inset 0 -2px 4px rgba(0,0,0,.2);
+    }
+    .io-name { font-size: 10px; color: var(--muted); line-height: 1.2; min-height: 22px; }
+
+    /* ── VARIABLES ── */
+    .var-row {
+      display: grid; grid-template-columns: 1fr 100px 120px auto; gap: 8px; align-items: center;
+      padding: 10px; border: 1.5px solid var(--border); border-radius: 9px; margin-bottom: 8px;
+    }
+    @media (max-width: 600px) { .var-row { grid-template-columns: 1fr 1fr; gap: 6px; } .var-row > * { font-size: 12px; } }
+    .var-label { font-weight: 700; }
+    .var-addr { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .var-row input { padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none; width: 100%; }
+    .var-row .btn { padding: 8px 12px; font-size: 12px; min-height: 32px; }
+
+    /* ── CHART ── */
+    #chartWrap { background: var(--navy); border-radius: 12px; padding: 14px; }
+    #chartCanvas { width: 100%; height: 280px; display: block; }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: #cbd5e1; }
+    .chart-legend label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+    .chart-legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+    /* ── CONFIG VAR LIST ── */
+    .cfg-list { border: 1.5px solid var(--border); border-radius: 9px; }
+    .cfg-list-row {
+      display: grid; grid-template-columns: 80px 1fr 90px auto; gap: 8px;
+      padding: 8px; border-bottom: 1px solid var(--border); align-items: center;
+    }
+    .cfg-list-row:last-child { border-bottom: none; }
+    .cfg-list-row input, .cfg-list-row select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+    .cfg-list-row .btn-del { padding: 4px 8px; font-size: 16px; line-height: 1; min-height: 30px; }
+    @media (max-width: 600px) { .cfg-list-row { grid-template-columns: 1fr 1fr; } }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: calc(20px + var(--safe-bottom)); left: 50%;
+      transform: translateX(-50%) translateY(150%);
+      background: var(--navy); color: #fff; padding: 12px 20px; border-radius: 12px; font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.2); z-index: 9999; transition: transform .3s;
+      max-width: 90vw; text-align: center;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── BANNER ── */
+    .banner {
+      padding: 10px 14px; border-radius: 9px; font-size: 12px; line-height: 1.5;
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .banner-warn { background: #fef3c7; color: #92400e; border-left: 3px solid var(--amber); }
+    .banner-info { background: #dbeafe; color: #1e40af; border-left: 3px solid var(--sky); }
+    .banner b { font-weight: 800; }
+
+    /* ── LAN INFO ── */
+    .lan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .lan-cell { background: var(--bg); border-radius: 9px; padding: 10px 12px; }
+    .lan-key { font-size: 10px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .lan-val { width: 100%; border: none; background: transparent; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--navy); padding: 0; outline: none; }
+    .lan-val.ok  { color: var(--green); }
+    .lan-val.err { color: var(--red); }
+
+    /* ── EMPTY ── */
+    .empty { text-align: center; padding: 24px; color: var(--muted); font-size: 13px; }
+
+    /* ── KBD ── */
+    kbd { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>⚡ Điều khiển LOGO! 230RCE</h1>
+  <div id="conn" class="conn">
+    <span class="dot"></span>
+    <span id="connTxt">Chưa kết nối</span>
+  </div>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn active" data-tab="output">📤 Ngõ ra</button>
+  <button class="tab-btn" data-tab="status">💡 Trạng thái</button>
+  <button class="tab-btn" data-tab="vars">🔢 Biến số</button>
+  <button class="tab-btn" data-tab="chart">📈 Biểu đồ</button>
+  <button class="tab-btn" data-tab="config">⚙ Cài đặt</button>
+  <button class="tab-btn" data-tab="help">❓ Hướng dẫn</button>
+</nav>
+
+<main>
+
+  <!-- ── TAB: NGÕ RA ── -->
+  <section id="tab-output" class="tab-panel active">
+    <div class="card">
+      <h3>📤 Điều khiển ngõ ra (Q)</h3>
+      <div class="card-sub">Bật/tắt trực tiếp các ngõ ra digital của LOGO!. Cấu hình danh sách trong tab ⚙ Cài đặt.</div>
+      <div class="grid-output" id="outputGrid"></div>
+    </div>
+  </section>
+
+  <!-- ── TAB: TRẠNG THÁI ── -->
+  <section id="tab-status" class="tab-panel">
+    <div class="card">
+      <h3>🔌 Kết nối LAN <button class="btn btn-outline" style="margin-left:auto;font-size:11px;padding:4px 10px;min-height:auto" onclick="pingLan()">Ping lại</button></h3>
+      <div class="lan-grid">
+        <div class="lan-cell"><div class="lan-key">URL gốc</div><input id="lanUrl" class="lan-val mono" readonly></div>
+        <div class="lan-cell"><div class="lan-key">Host : Port</div><input id="lanHost" class="lan-val mono" readonly></div>
+        <div class="lan-cell"><div class="lan-key">Ping</div><input id="lanPing" class="lan-val mono" readonly></div>
+        <div class="lan-cell"><div class="lan-key">Cập nhật cuối</div><input id="lanLast" class="lan-val mono" readonly></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>📥 Ngõ vào (I)</h3>
+      <div class="io-grid" id="inputGrid"></div>
+    </div>
+    <div class="card">
+      <h3>💡 Ngõ ra (Q)</h3>
+      <div class="io-grid" id="qGrid"></div>
+    </div>
+    <div class="card">
+      <h3>🚩 Cờ nhớ (M)</h3>
+      <div class="io-grid" id="mGrid"></div>
+    </div>
+  </section>
+
+  <!-- ── TAB: BIẾN SỐ ── -->
+  <section id="tab-vars" class="tab-panel">
+    <div class="card">
+      <h3>🔢 Đọc / ghi biến số (VW, VD)</h3>
+      <div class="card-sub">Setpoint timer, counter, ngưỡng analog… Giá trị "Hiện tại" cập nhật theo chu kỳ polling.</div>
+      <div id="varsList"></div>
+    </div>
+  </section>
+
+  <!-- ── TAB: BIỂU ĐỒ ── -->
+  <section id="tab-chart" class="tab-panel">
+    <div class="card">
+      <h3>📈 Biểu đồ thời gian thực</h3>
+      <div class="card-sub">Lưu <span id="chartLen">0</span> mẫu. Mỗi mẫu = 1 chu kỳ polling. Dữ liệu chỉ lưu trong session (RAM), không ghi đĩa.</div>
+      <div id="chartWrap">
+        <canvas id="chartCanvas"></canvas>
+        <div class="chart-legend" id="chartLegend"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-outline" onclick="chartData.length=0;drawChart();showToast('Đã xóa biểu đồ')">🗑 Xóa</button>
+        <button class="btn btn-outline" onclick="exportChartCSV()">📥 CSV</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TAB: CÀI ĐẶT ── -->
+  <section id="tab-config" class="tab-panel">
+    <div class="card">
+      <h3>🌐 Kết nối PLC</h3>
+      <div class="banner banner-warn" style="margin-bottom:12px">
+        ⚠️ <div><b>CORS:</b> Nếu mở file này từ ổ đĩa hoặc domain khác, trình duyệt sẽ chặn request tới PLC. Khuyến nghị: <b>upload file vào SD card</b> của LOGO! qua Soft Comfort (User-defined web pages) để cùng origin.</div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Địa chỉ IP / URL gốc</label><input id="cfgUrl" placeholder="http://192.168.0.1"></div>
+        <div class="fg"><label>Chu kỳ polling (ms)</label><input id="cfgPoll" type="number" min="200" step="100"></div>
+      </div>
+      <div class="fg">
+        <label>Chế độ kết nối</label>
+        <select id="cfgMode">
+          <option value="demo">🟡 Demo (dữ liệu giả lập, không cần PLC)</option>
+          <option value="modbus-proxy">🟢 Modbus TCP qua local proxy (KHUYẾN NGHỊ — cần chạy local-proxy/proxy.js)</option>
+          <option value="logo-web">🔵 LOGO! Web Server (POST /AJAX — đoán mò, có thể không chạy)</option>
+        </select>
+      </div>
+      <div class="fg" id="cfgProxyRow" style="display:none">
+        <label>URL local proxy</label>
+        <input id="cfgProxyUrl" placeholder="http://localhost:3001" class="mono">
+      </div>
+      <div class="form-row" id="cfgLogoAuthRow">
+        <div class="fg"><label>Tên đăng nhập (LOGO! Web)</label><input id="cfgUser" placeholder="admin"></div>
+        <div class="fg"><label>Mật khẩu (LOGO! Web)</label><input id="cfgPass" type="password" placeholder="LOGO!"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-primary" onclick="saveConfig();testConnection()">💾 Lưu & Kiểm tra</button>
+        <button class="btn btn-outline" onclick="testConnection()">🔌 Test</button>
+        <button class="btn btn-danger" onclick="resetConfig()">↺ Reset mặc định</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📤 Danh sách ngõ ra (Q)</h3>
+      <div class="card-sub">Định nghĩa các nút điều khiển trong tab Ngõ ra.</div>
+      <div class="cfg-list" id="cfgOutputs"></div>
+      <button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="addCfgItem('outputs',{addr:'Q1',label:'Đèn'})">+ Thêm ngõ ra</button>
+    </div>
+
+    <div class="card">
+      <h3>📥 Danh sách ngõ vào (I)</h3>
+      <div class="cfg-list" id="cfgInputs"></div>
+      <button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="addCfgItem('inputs',{addr:'I1',label:'Cảm biến'})">+ Thêm ngõ vào</button>
+    </div>
+
+    <div class="card">
+      <h3>🚩 Danh sách cờ nhớ (M)</h3>
+      <div class="cfg-list" id="cfgMemory"></div>
+      <button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="addCfgItem('memory',{addr:'M1',label:'Cờ'})">+ Thêm cờ</button>
+    </div>
+
+    <div class="card">
+      <h3>🔢 Danh sách biến số (V)</h3>
+      <div class="card-sub">Type: <code>bit</code>, <code>byte</code>, <code>word</code> (16-bit), <code>dword</code> (32-bit).</div>
+      <div class="cfg-list" id="cfgVars"></div>
+      <button class="btn btn-ghost" style="margin-top:8px;width:100%" onclick="addCfgItem('variables',{addr:'VW0',type:'word',label:'Biến'})">+ Thêm biến</button>
+    </div>
+  </section>
+
+  <!-- ── TAB: HƯỚNG DẪN ── -->
+  <section id="tab-help" class="tab-panel">
+    <div class="card">
+      <h3>🟢 Modbus TCP qua local proxy (khuyến nghị)</h3>
+      <div class="banner banner-info" style="margin-bottom:10px">
+        ℹ️ <div>Browser <b>không nói được Modbus TCP raw</b> (giới hạn bảo mật). Cách tin cậy nhất: chạy 1 proxy Node.js nhỏ trên cùng PC, browser gọi HTTP localhost → proxy nói Modbus với PLC.</div>
+      </div>
+      <p style="font-size:13px;line-height:1.7"><b>4 bước:</b></p>
+      <ol style="padding-left:20px;line-height:1.7;font-size:13px">
+        <li>Trong <b>LOGO! Soft Comfort</b>: Tools → Transfer → <b>Configure Modbus Slave</b> → Enable. Đặt IP tĩnh cho PLC (vd <code>192.168.0.3</code>).</li>
+        <li>Trên PC (cần Node.js 20+):
+          <pre style="background:#0f172a;color:#86efac;padding:10px;border-radius:8px;font-size:12px;margin-top:6px;overflow-x:auto;font-family:'JetBrains Mono',monospace">cd local-proxy
+npm install
+node proxy.js --plc-host 192.168.0.3</pre>
+        </li>
+        <li>Khi log hiện <code>[modbus] ✓ kết nối ...</code> và <code>[http] sẵn sàng</code> là OK.</li>
+        <li>Trong tab ⚙ <b>Cài đặt</b>: chọn <b>Chế độ = "Modbus Local Proxy"</b>, URL = <code>http://localhost:3001</code> → Lưu & Test.</li>
+      </ol>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">Chi tiết: <code>local-proxy/README.md</code> — có hướng dẫn auto-start Windows + troubleshoot.</p>
+    </div>
+
+    <div class="card">
+      <h3>🔵 Chế độ LOGO! Web Server (thay thế, ít tin cậy)</h3>
+      <div class="card-sub">Nếu không muốn chạy proxy, có thể dùng LOGO! Web Server tích hợp. Lưu ý: API <code>POST /AJAX</code> không được Siemens public, format có thể không khớp với firmware bạn dùng.</div>
+      <ol style="padding-left:20px;line-height:1.7;font-size:13px">
+        <li>Mở <b>LOGO! Soft Comfort</b> → Tools → Transfer → <b>Configure web server</b>.</li>
+        <li>Bật <b>Enable web server</b>, đặt user name + password (mặc định <code>admin</code>).</li>
+        <li>Cấp <b>quyền đọc/ghi</b> (Allow access) cho các vùng nhớ I, Q, M, V cần dùng.</li>
+        <li>Tải file <code>plc.html</code> này vào <b>SD card</b> qua mục <b>User-defined web pages</b> (để tránh CORS), hoặc dùng extension CORS Unblock khi test.</li>
+        <li>Trong tab ⚙ Cài đặt: chọn <b>Chế độ = "LOGO! Web Server"</b>, nhập IP + user/pass.</li>
+        <li>Nhấn <b>🔌 Test</b>. Nếu thất bại: mở DevTools Network khi dùng trang gốc của PLC, copy đúng format request, chỉnh hàm <code>plcAdapter.request()</code> trong mã nguồn.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>🧩 Bảng địa chỉ hỗ trợ</h3>
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <thead><tr style="background:var(--bg)"><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Vùng</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Cú pháp</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Mô tả</th></tr></thead>
+        <tbody>
+          <tr><td style="padding:8px"><code>I</code></td><td style="padding:8px"><code>I1</code>…<code>I24</code></td><td style="padding:8px">Ngõ vào digital (read-only)</td></tr>
+          <tr><td style="padding:8px"><code>Q</code></td><td style="padding:8px"><code>Q1</code>…<code>Q20</code></td><td style="padding:8px">Ngõ ra digital</td></tr>
+          <tr><td style="padding:8px"><code>M</code></td><td style="padding:8px"><code>M1</code>…<code>M64</code></td><td style="padding:8px">Cờ nhớ bit</td></tr>
+          <tr><td style="padding:8px"><code>V</code></td><td style="padding:8px"><code>VB0</code>, <code>VW0</code>, <code>VD0</code></td><td style="padding:8px">Vùng biến số (byte/word/dword)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>🔧 Tinh chỉnh giao thức</h3>
+      <div class="banner banner-info">
+        ℹ️ <div>API webserver của LOGO! 8 không có tài liệu chính thức công khai. Adapter hiện tại dùng <b>POST /AJAX</b> với body dạng plain text. Nếu firmware của bạn dùng định dạng khác, sửa hàm <code>plcAdapter.request()</code> trong mã nguồn (gần đầu thẻ <code>&lt;script&gt;</code>).</div>
+      </div>
+    </div>
+
+    <!-- ── TRIỂN KHAI QUA INTERNET ── -->
+    <div class="card">
+      <h3>🌐 Triển khai qua internet — 4 phương án</h3>
+      <div class="card-sub">File <code>plc.html</code> mặc định chỉ chạy được trên cùng LAN với PLC. Để truy cập từ xa, chọn 1 trong 4 cách:</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--bg)">
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Cách</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Bảo mật</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Chi phí</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Phù hợp</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:8px"><b>Tailscale</b> (VPN)</td><td style="padding:8px">⭐⭐⭐⭐⭐</td><td style="padding:8px">Free &lt;100 device</td><td style="padding:8px">1 vài người, có máy edge tại trạm</td></tr>
+          <tr><td style="padding:8px"><b>Cloudflare Tunnel</b></td><td style="padding:8px">⭐⭐⭐⭐⭐</td><td style="padding:8px">Free</td><td style="padding:8px">Cần URL HTTPS public + login Google</td></tr>
+          <tr><td style="padding:8px"><b>Backend trung tâm</b> (Node.js + MQTT)</td><td style="padding:8px">⭐⭐⭐⭐</td><td style="padding:8px">VPS ~$5/th</td><td style="padding:8px"><b>Nhiều trạm (>10)</b>, cần log + phân quyền</td></tr>
+          <tr><td style="padding:8px">Port forwarding thẳng</td><td style="padding:8px">❌</td><td style="padding:8px">Free</td><td style="padding:8px"><b>KHÔNG dùng</b> — chỉ test LAN tạm</td></tr>
+        </tbody>
+      </table>
+      <div class="banner banner-warn" style="margin-top:10px">
+        ⚠️ <div>LOGO! webserver chỉ có HTTP Basic Auth, không HTTPS, không rate limit. <b>Tuyệt đối không port-forward port 80 PLC ra internet</b> — hacker quét được sẽ điều khiển toàn tuyến đèn.</div>
+      </div>
+    </div>
+
+    <!-- ── KIẾN TRÚC ĐA TRẠM ── -->
+    <div class="card">
+      <h3>🏗 Kiến trúc đa trạm (>50 trạm phân tán)</h3>
+      <div class="card-sub">Khi triển khai cho quận/huyện, dùng pattern IoT gateway:</div>
+      <pre style="background:var(--bg);padding:12px;border-radius:9px;font-size:11px;overflow-x:auto;line-height:1.5;color:var(--text)">
+[LOGO! 230RCE] ──Modbus TCP──→ [Gateway tại trạm] ──MQTT/4G──→ [Server VPS] ──HTTPS──→ [Web UI]
+    LAN nội bộ                  RasPi + 4G dongle                Mosquitto/Aedes        điện thoại/PC
+                                hoặc 4G router công nghiệp        + REST + DB + Auth      người dùng
+      </pre>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">Có skeleton 3 thành phần trong cùng repo: <code>gateway/</code> (Node.js trên RasPi), <code>server/</code> (Docker: Aedes + Express + SQLite + JWT + WebSocket), <code>server/public/plc.html</code> (UI cloud multi-station).</p>
+    </div>
+
+    <!-- ── LỰA CHỌN ĐƯỜNG TRUYỀN ── -->
+    <div class="card">
+      <h3>📡 Đường truyền 4G / WiFi / LoRa</h3>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--bg)">
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)"></th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">4G/LTE</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">WiFi</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">LoRa</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:6px 8px;font-weight:700">Phủ sóng</td><td style="padding:6px 8px">✅ Cả nước</td><td style="padding:6px 8px">❌ &lt;50m</td><td style="padding:6px 8px">✅ 2–10km</td></tr>
+          <tr><td style="padding:6px 8px;font-weight:700">Real-time ON/OFF</td><td style="padding:6px 8px">✅ &lt;1s</td><td style="padding:6px 8px">✅ &lt;100ms</td><td style="padding:6px 8px">⚠ 1–10s</td></tr>
+          <tr><td style="padding:6px 8px;font-weight:700">Chi phí/tháng</td><td style="padding:6px 8px">~30–50k SIM</td><td style="padding:6px 8px">Free</td><td style="padding:6px 8px">Free TTN</td></tr>
+          <tr><td style="padding:6px 8px;font-weight:700">Tốn nguồn</td><td style="padding:6px 8px">Cao</td><td style="padding:6px 8px">TB</td><td style="padding:6px 8px">Rất thấp</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">→ Đèn đường có điện AC sẵn, cần điều khiển tức thì: <b>4G là lựa chọn tiêu chuẩn ở VN</b>. LoRa quá hẹp băng thông cho ON/OFF, WiFi không phủ ngoài trời.</p>
+    </div>
+
+    <!-- ── HARDWARE ── -->
+    <div class="card">
+      <h3>🔩 Phần cứng gateway tại trạm</h3>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--bg)">
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Thiết bị</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Giá</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Ưu / Nhược</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:8px">Raspberry Pi Zero 2W + USB 4G (Huawei E3372)</td><td style="padding:8px">~1–1.5tr</td><td style="padding:8px">Linh hoạt, dễ tùy biến. Cần tủ chống ẩm.</td></tr>
+          <tr><td style="padding:8px">Raspberry Pi 4 + 4G HAT (Waveshare/SIM7600)</td><td style="padding:8px">~2.5–3tr</td><td style="padding:8px">Ổn định hơn Zero, có GPIO cho I/O phụ.</td></tr>
+          <tr><td style="padding:8px">4G router công nghiệp Teltonika RUT240</td><td style="padding:8px">~4–5tr</td><td style="padding:8px">Tủ kim loại IP30, có VPN client, watchdog HW. Khuyến nghị cho dự án thật.</td></tr>
+          <tr><td style="padding:8px">USR-G780/G781 (Modbus-MQTT bridge)</td><td style="padding:8px">~3tr</td><td style="padding:8px">Sẵn firmware Modbus→MQTT. Không cần code gateway nhưng kém linh hoạt.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── LOGO! MODBUS MAPPING ── -->
+    <div class="card">
+      <h3>🧷 Mapping LOGO! ↔ Modbus address</h3>
+      <div class="card-sub">Khi bật <b>Modbus Slave</b> trong Soft Comfort, các vùng nhớ LOGO! map cứng theo chuẩn Siemens:</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--bg)">
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">LOGO!</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Modbus area</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Address</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">FC đọc / ghi</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:6px 8px"><code>I1..I24</code></td><td style="padding:6px 8px">Discrete Input</td><td style="padding:6px 8px">0..23</td><td style="padding:6px 8px">02 / —</td></tr>
+          <tr><td style="padding:6px 8px"><code>Q1..Q20</code></td><td style="padding:6px 8px">Coil</td><td style="padding:6px 8px">8192..8211</td><td style="padding:6px 8px">01 / 05</td></tr>
+          <tr><td style="padding:6px 8px"><code>M1..M64</code></td><td style="padding:6px 8px">Coil</td><td style="padding:6px 8px">8256..8319</td><td style="padding:6px 8px">01 / 05</td></tr>
+          <tr><td style="padding:6px 8px"><code>VW0..VWn</code></td><td style="padding:6px 8px">Holding Register</td><td style="padding:6px 8px">0..n/2</td><td style="padding:6px 8px">03 / 06</td></tr>
+          <tr><td style="padding:6px 8px"><code>AI1..AI8</code></td><td style="padding:6px 8px">Input Register</td><td style="padding:6px 8px">1..8</td><td style="padding:6px 8px">04 / —</td></tr>
+          <tr><td style="padding:6px 8px"><code>AQ1..AQ8</code></td><td style="padding:6px 8px">Holding Register</td><td style="padding:6px 8px">513..520</td><td style="padding:6px 8px">03 / 06</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── DEPLOY VPS ── -->
+    <div class="card">
+      <h3>🚀 Deploy server trung tâm (VPS Docker)</h3>
+      <pre style="background:#0f172a;color:#86efac;padding:14px;border-radius:9px;font-size:12px;overflow-x:auto;line-height:1.5;font-family:'JetBrains Mono',monospace">
+# Trên VPS Ubuntu/Debian (cài Docker + Compose trước)
+git clone &lt;repo-plc-logo&gt; && cd plc-logo
+cp server/.env.example server/.env       # sửa JWT_SECRET, ADMIN_PASS
+docker compose up -d
+
+# Truy cập http://&lt;vps-ip&gt;:8080 → đăng nhập admin
+# → tab Quản trị → tạo trạm → copy gatewayToken (chỉ hiện 1 lần)</pre>
+    </div>
+
+    <!-- ── DEPLOY GATEWAY ── -->
+    <div class="card">
+      <h3>📦 Deploy gateway (RasPi tại trạm)</h3>
+      <pre style="background:#0f172a;color:#86efac;padding:14px;border-radius:9px;font-size:12px;overflow-x:auto;line-height:1.5;font-family:'JetBrains Mono',monospace">
+# RasPi Zero 2W / Pi 4, Node.js 20+, USB 4G dongle stick-mode
+cd plc-logo/gateway
+npm install
+cp config.example.json config.json       # paste stationId + gatewayToken
+node gateway.js                           # chạy thử
+
+# Setup auto-start
+sudo cp systemd/plc-gateway.service /etc/systemd/system/
+sudo systemctl enable --now plc-gateway
+journalctl -u plc-gateway -f              # xem log realtime</pre>
+    </div>
+
+    <!-- ── PRODUCTION CHECKLIST ── -->
+    <div class="card">
+      <h3>✅ Production checklist</h3>
+      <ol style="padding-left:20px;line-height:1.7;font-size:13px">
+        <li>Đặt <b>Caddy/Nginx reverse proxy</b> trước port 8080 → HTTPS Let's Encrypt + WSS tự động.</li>
+        <li>Bật <code>TLS_CERT_PATH</code>/<code>TLS_KEY_PATH</code> trong <code>.env</code> để gateway dùng <code>mqtts://</code> thay vì <code>mqtt://</code>.</li>
+        <li>Đổi <b>tất cả secret</b> trong <code>.env</code>: <code>JWT_SECRET</code>, <code>ADMIN_PASS</code>.</li>
+        <li>Thêm <b>fail2ban</b> hoặc rate limit middleware cho endpoint <code>/api/login</code>.</li>
+        <li>Cấu hình LOGO! <b>Modbus Slave</b> trong Soft Comfort, đặt IP tĩnh, đảm bảo gateway ping được PLC.</li>
+        <li>Backup định kỳ <code>server/data/plc.db</code> (cron + rsync hoặc restic).</li>
+        <li>Monitor: gửi alert khi trạm offline >5 phút (qua Telegram bot / email).</li>
+        <li>PLC <b>không bao giờ</b> phơi port 80/502 ra internet — chỉ LAN nội bộ tại trạm.</li>
+      </ol>
+    </div>
+
+    <!-- ── FAILURE MODES ── -->
+    <div class="card">
+      <h3>🛠 Xử lý sự cố thường gặp</h3>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--bg)">
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Sự cố</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Triệu chứng</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Hành vi hệ thống</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:8px">Mất 4G tại trạm</td><td style="padding:8px">Chấm xanh WS thành đỏ</td><td style="padding:8px">Gateway buffer 200 mẫu RAM → reconnect đẩy lại topic <code>state/history</code></td></tr>
+          <tr><td style="padding:8px">Gateway crash</td><td style="padding:8px">Trạm hiện Offline trên UI</td><td style="padding:8px">LWT phát <code>online=false</code> tự động, systemd restart sau 5s</td></tr>
+          <tr><td style="padding:8px">PLC mất nguồn</td><td style="padding:8px">Gateway báo lỗi Modbus</td><td style="padding:8px">Retry mỗi 5s, log <code>[modbus]</code></td></tr>
+          <tr><td style="padding:8px">Server VPS down</td><td style="padding:8px">Tất cả gateway buffer</td><td style="padding:8px">Reconnect khi server lên lại + đẩy backlog</td></tr>
+          <tr><td style="padding:8px">Token gateway rò rỉ</td><td style="padding:8px">State giả từ kẻ tấn công</td><td style="padding:8px">Admin xóa + tạo lại trạm với token mới, redeploy gateway</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── BẢO MẬT ── -->
+    <div class="card">
+      <h3>🔐 Mô hình bảo mật tổng thể</h3>
+      <ul style="padding-left:20px;line-height:1.7;font-size:13px">
+        <li><b>User</b>: bcrypt + JWT 7 ngày, role <code>admin</code>/<code>operator</code>. Chỉ admin tạo/xóa trạm.</li>
+        <li><b>Gateway</b>: token 24-byte hex sinh ngẫu nhiên, server bcrypt-hash, chỉ trả về <b>1 lần khi tạo trạm</b>.</li>
+        <li><b>MQTT ACL</b>: Aedes chặn cứng — gateway STN-A không bao giờ thấy topic của STN-B.</li>
+        <li><b>PLC</b>: chỉ phơi LAN nội bộ tại trạm. Gateway là điểm cô lập duy nhất giữa PLC ↔ internet.</li>
+        <li><b>Internal secret</b>: server tự sinh random mỗi lần boot cho MQTT client nội bộ.</li>
+      </ul>
+    </div>
+
+    <!-- ── TÍCH HỢP DENTAT ── -->
+    <div class="card">
+      <h3>🗺 Tích hợp với dentat.html (bản đồ đèn)</h3>
+      <p style="font-size:13px;line-height:1.6">Sau khi server trung tâm chạy ổn, có thể tích hợp với app <code>dentat.html</code> hiện có:</p>
+      <ul style="padding-left:20px;line-height:1.7;font-size:13px;margin-top:8px">
+        <li>Marker trên bản đồ đọc trạng thái thật của contactor qua <code>GET /api/stations/:id/state</code>.</li>
+        <li>Màu marker (LED hư / sự cố / bình thường) update realtime theo trạng thái Q của PLC.</li>
+        <li>Popup đèn thêm nút Quick Control (ON/OFF tuyến đèn) gọi <code>POST /api/stations/:id/cmd</code>.</li>
+        <li>Map mỗi đèn → 1 station + addr Q cụ thể qua trường mới trong Sheet (vd cột <code>plcStation</code>, <code>plcOutput</code>).</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════
+// CONFIG — lưu trong localStorage
+// ═══════════════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'plcLogoConfig_v2';
+const DEFAULT_CONFIG = {
+  mode: 'demo',                       // 'demo' | 'modbus-proxy' | 'logo-web'
+  baseUrl: 'http://192.168.0.3',      // dùng cho logo-web mode
+  proxyUrl: 'http://localhost:3001',  // dùng cho modbus-proxy mode
+  username: 'admin',
+  password: '',
+  pollMs: 1500,
+  outputs:  [
+    { addr: 'Q1', label: 'Đèn tủ 1' },
+    { addr: 'Q2', label: 'Đèn tủ 2' },
+    { addr: 'Q3', label: 'Contactor A' },
+    { addr: 'Q4', label: 'Contactor B' },
+  ],
+  inputs: [
+    { addr: 'I1', label: 'Nút bấm 1' },
+    { addr: 'I2', label: 'Cảm biến cửa' },
+    { addr: 'I3', label: 'Photocell' },
+    { addr: 'I4', label: 'Quá tải' },
+  ],
+  memory: [
+    { addr: 'M1', label: 'Chế độ auto' },
+    { addr: 'M2', label: 'Cảnh báo' },
+  ],
+  variables: [
+    { addr: 'VW0',  type: 'word', label: 'Timer SP (s)' },
+    { addr: 'VW2',  type: 'word', label: 'Counter giá trị' },
+    { addr: 'VW4',  type: 'word', label: 'Ngưỡng analog' },
+  ],
+};
+
+let config = loadConfig();
+let pollTimer = null;
+let currentTab = 'output';
+let lastState = { I: {}, Q: {}, M: {}, V: {} };
+let chartData = []; // [{ ts, vals: {VW0: 123, ...} }]
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return structuredClone(DEFAULT_CONFIG);
+    const c = JSON.parse(raw);
+    return { ...structuredClone(DEFAULT_CONFIG), ...c };
+  } catch(e) { return structuredClone(DEFAULT_CONFIG); }
+}
+
+function saveConfig() {
+  config.mode = document.getElementById('cfgMode').value;
+  config.baseUrl  = (document.getElementById('cfgUrl').value      || '').trim().replace(/\/$/, '');
+  config.proxyUrl = (document.getElementById('cfgProxyUrl').value || '').trim().replace(/\/$/, '');
+  config.username = document.getElementById('cfgUser').value || '';
+  config.password = document.getElementById('cfgPass').value || '';
+  config.pollMs = Math.max(200, parseInt(document.getElementById('cfgPoll').value) || 1500);
+  collectCfgList('outputs');
+  collectCfgList('inputs');
+  collectCfgList('memory');
+  collectCfgList('variables');
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  renderAll();
+  restartPolling();
+  showToast('💾 Đã lưu cấu hình');
+}
+
+function resetConfig() {
+  if (!confirm('Khôi phục cấu hình mặc định?')) return;
+  config = structuredClone(DEFAULT_CONFIG);
+  localStorage.removeItem(STORAGE_KEY);
+  renderAll();
+  restartPolling();
+  showToast('↺ Đã reset');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PLC ADAPTER — Sửa request() / parse() nếu firmware LOGO! dùng định dạng khác
+//
+// Mặc định nhắm vào LOGO! 8 (0BA8) Web Server:
+//   POST {baseUrl}/AJAX
+//   Body (text/plain): lệnh dạng "GET /<addr>" hoặc "SET /<addr>=<value>"
+//   Auth: HTTP Basic
+//
+// ⚠️ API LOGO! 8 không có spec công khai chính thức. Tùy firmware, format
+// có thể là JSON, form-encoded, hoặc một URL endpoint khác. Nếu test không
+// chạy, mở DevTools → Network khi PLC trang web tích hợp hoạt động, copy
+// đúng định dạng request rồi chỉnh hàm request() bên dưới.
+// ═══════════════════════════════════════════════════════════════════════
+const plcAdapter = {
+  async request(method, addr, value) {
+    const url = config.baseUrl + '/AJAX';
+    const body = method === 'GET' ? `GET /${addr}` : `SET /${addr}=${value}`;
+    const headers = { 'Content-Type': 'text/plain' };
+    if (config.username) {
+      headers['Authorization'] = 'Basic ' + btoa(config.username + ':' + config.password);
+    }
+    const res = await fetch(url, { method: 'POST', headers, body, mode: 'cors', credentials: 'omit' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.text();
+  },
+
+  parseValue(raw, type) {
+    if (raw == null) return null;
+    const txt = String(raw).trim();
+    // Một số firmware trả "VW0=123", một số trả "123" thuần
+    const m = txt.match(/=\s*(-?\d+)/);
+    const num = m ? parseInt(m[1]) : parseInt(txt);
+    if (!Number.isFinite(num)) return null;
+    if (type === 'bit') return num !== 0;
+    return num;
+  },
+
+  async readBit(addr)   { return this.parseValue(await this.request('GET', addr), 'bit'); },
+  async writeBit(addr, on) { return await this.request('SET', addr, on ? 1 : 0); },
+  async readNum(addr)   { return this.parseValue(await this.request('GET', addr), 'num'); },
+  async writeNum(addr, v) { return await this.request('SET', addr, parseInt(v) || 0); },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// DEMO ADAPTER — random data để test UI không cần PLC thật
+// ═══════════════════════════════════════════════════════════════════════
+const demoState = { I:{}, Q:{}, M:{}, V:{} };
+const demoAdapter = {
+  async readBit(addr) {
+    const area = addr[0];
+    if (demoState[area]?.[addr] === undefined) {
+      demoState[area][addr] = Math.random() > 0.5;
+    } else if (Math.random() < 0.05) {
+      demoState[area][addr] = !demoState[area][addr];
+    }
+    return demoState[area][addr];
+  },
+  async writeBit(addr, on) {
+    const area = addr[0];
+    demoState[area][addr] = !!on;
+    return 'OK';
+  },
+  async readNum(addr) {
+    if (demoState.V[addr] === undefined) demoState.V[addr] = Math.floor(Math.random() * 1000);
+    else demoState.V[addr] = Math.max(0, demoState.V[addr] + Math.floor((Math.random() - 0.5) * 20));
+    return demoState.V[addr];
+  },
+  async writeNum(addr, v) {
+    demoState.V[addr] = parseInt(v) || 0;
+    return 'OK';
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// MODBUS PROXY ADAPTER — gọi local proxy chạy node proxy.js
+// Browser → HTTP localhost:3001 → proxy → Modbus TCP → LOGO!
+// ═══════════════════════════════════════════════════════════════════════
+const modbusProxyAdapter = {
+  async _post(path, body) {
+    const res = await fetch(config.proxyUrl + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(()=>'');
+      throw new Error('proxy ' + res.status + ': ' + errText.slice(0, 80));
+    }
+    return await res.json();
+  },
+  async readBit(addr)        { const r = await this._post('/read',  { addr });             return !!r.value; },
+  async writeBit(addr, on)   { return await this._post('/write', { addr, value: on?1:0 }); },
+  async readNum(addr)        { const r = await this._post('/read',  { addr });             return r.value; },
+  async writeNum(addr, v)    { return await this._post('/write', { addr, value: parseInt(v)||0 }); },
+  async readBatch(points)    { return await this._post('/batch', { points }); },
+  async health()             { const res = await fetch(config.proxyUrl + '/health'); if (!res.ok) throw new Error('HTTP '+res.status); return await res.json(); },
+};
+
+function adapter() {
+  switch (config.mode) {
+    case 'modbus-proxy': return modbusProxyAdapter;
+    case 'logo-web':     return plcAdapter;
+    case 'demo':         default: return demoAdapter;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CONNECTION STATUS
+// ═══════════════════════════════════════════════════════════════════════
+function setConnStatus(state, msg) {
+  const el = document.getElementById('conn');
+  const txt = document.getElementById('connTxt');
+  el.classList.remove('ok','err','demo');
+  if (state) el.classList.add(state);
+  txt.textContent = msg;
+}
+
+async function testConnection() {
+  if (config.mode === 'demo') { setConnStatus('demo', 'DEMO MODE'); showToast('🟡 Đang chạy chế độ demo'); return; }
+  setConnStatus(null, 'Đang test...');
+  try {
+    if (config.mode === 'modbus-proxy') {
+      if (!config.proxyUrl) throw new Error('Chưa nhập URL proxy');
+      const h = await modbusProxyAdapter.health();
+      if (!h.plcConnected) throw new Error('Proxy OK nhưng PLC chưa kết nối — check IP PLC trong proxy.js');
+      setConnStatus('ok', 'Modbus → ' + h.plcHost);
+      showToast('✅ Kết nối OK qua proxy → ' + h.plcHost);
+    } else if (config.mode === 'logo-web') {
+      if (!config.baseUrl) throw new Error('Chưa nhập URL PLC');
+      const probe = config.outputs[0]?.addr || config.inputs[0]?.addr || 'Q1';
+      await plcAdapter.readBit(probe);
+      setConnStatus('ok', config.baseUrl);
+      showToast('✅ Kết nối LOGO! Web OK');
+    }
+  } catch(e) {
+    setConnStatus('err', 'Lỗi: ' + e.message);
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════════════════════════════════════
+document.getElementById('tabs').addEventListener('click', e => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  const tab = btn.dataset.tab;
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+  if (tab === 'chart') drawChart();
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// RENDER: OUTPUT GRID (Q toggles)
+// ═══════════════════════════════════════════════════════════════════════
+function renderOutputs() {
+  const grid = document.getElementById('outputGrid');
+  if (!config.outputs.length) {
+    grid.innerHTML = '<div class="empty">Chưa có ngõ ra nào — thêm trong tab ⚙ Cài đặt</div>';
+    return;
+  }
+  grid.innerHTML = config.outputs.map(o => {
+    const on = !!lastState.Q[o.addr];
+    return `
+      <div class="q-card ${on ? 'on' : 'off'}">
+        <div class="q-head">
+          <span class="q-addr">${o.addr}</span>
+          <span class="q-state">${on ? '● ON' : '○ OFF'}</span>
+        </div>
+        <div class="q-label">${escapeHtml(o.label)}</div>
+        <div class="q-actions">
+          <button class="btn ${on ? 'btn-outline' : 'btn-primary'}" onclick="toggleOutput('${o.addr}', true)">ON</button>
+          <button class="btn ${on ? 'btn-danger' : 'btn-outline'}" onclick="toggleOutput('${o.addr}', false)">OFF</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function toggleOutput(addr, on) {
+  try {
+    await adapter().writeBit(addr, on);
+    lastState.Q[addr] = on;
+    renderOutputs();
+    renderStatus();
+    showToast(`${addr} → ${on ? 'ON' : 'OFF'}`);
+  } catch(e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// RENDER: I/Q/M STATUS GRID
+// ═══════════════════════════════════════════════════════════════════════
+function renderStatus() {
+  renderLanInfo();
+  renderIoGroup('inputGrid',  config.inputs,  'I');
+  renderIoGroup('qGrid',      config.outputs, 'Q');
+  renderIoGroup('mGrid',      config.memory,  'M');
+}
+
+// ── LAN INFO ── hiển thị URL/host/port + ping ở đầu tab Trạng thái
+let lastPingMs = null;
+let lastPingOk = null;
+let lastPollAt = null;
+
+function parseHostPort(url) {
+  try {
+    const u = new URL(url);
+    const port = u.port || (u.protocol === 'https:' ? '443' : '80');
+    return `${u.hostname} : ${port}`;
+  } catch { return '—'; }
+}
+
+function renderLanInfo() {
+  const urlEl  = document.getElementById('lanUrl');
+  const hostEl = document.getElementById('lanHost');
+  const pingEl = document.getElementById('lanPing');
+  const lastEl = document.getElementById('lanLast');
+  if (!urlEl) return;
+  const mode = config.mode;
+  const targetUrl = mode === 'modbus-proxy' ? config.proxyUrl
+                  : mode === 'logo-web'     ? config.baseUrl
+                  : '';
+  urlEl.value  = mode === 'demo' ? 'DEMO MODE (không kết nối thật)'
+              : mode === 'modbus-proxy' ? `Proxy ${targetUrl} → Modbus TCP`
+              : targetUrl || '—';
+  hostEl.value = mode === 'demo' ? '—' : parseHostPort(targetUrl);
+  if (mode === 'demo') {
+    pingEl.value = 'DEMO';
+    pingEl.className = 'lan-val mono';
+  } else if (lastPingMs == null) {
+    pingEl.value = 'chưa đo';
+    pingEl.className = 'lan-val mono';
+  } else {
+    pingEl.value = lastPingOk ? `${lastPingMs} ms` : `lỗi ${lastPingMs}ms`;
+    pingEl.className = 'lan-val mono ' + (lastPingOk ? 'ok' : 'err');
+  }
+  lastEl.value = lastPollAt ? new Date(lastPollAt).toLocaleTimeString('vi-VN') : '—';
+}
+
+async function pingLan() {
+  if (config.mode === 'demo') { showToast('🟡 Đang chạy demo'); return; }
+  const t0 = performance.now();
+  try {
+    if (config.mode === 'modbus-proxy') {
+      const h = await modbusProxyAdapter.health();
+      if (!h.plcConnected) throw new Error('PLC offline ở proxy');
+    } else {
+      const probe = config.outputs[0]?.addr || config.inputs[0]?.addr || 'Q1';
+      await plcAdapter.readBit(probe);
+    }
+    lastPingMs = Math.round(performance.now() - t0);
+    lastPingOk = true;
+  } catch (e) {
+    lastPingMs = Math.round(performance.now() - t0);
+    lastPingOk = false;
+  }
+  renderLanInfo();
+}
+
+function renderIoGroup(elId, list, area) {
+  const el = document.getElementById(elId);
+  if (!list.length) { el.innerHTML = '<div class="empty">Chưa có địa chỉ nào</div>'; return; }
+  el.innerHTML = list.map(item => {
+    const on = !!lastState[area][item.addr];
+    return `<div class="io-cell ${on ? 'on' : 'off'}">
+      <div class="io-addr">${item.addr}</div>
+      <div class="io-led"></div>
+      <div class="io-name">${escapeHtml(item.label || '')}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// RENDER: VARIABLES
+// ═══════════════════════════════════════════════════════════════════════
+function renderVars() {
+  const el = document.getElementById('varsList');
+  if (!config.variables.length) { el.innerHTML = '<div class="empty">Chưa có biến nào</div>'; return; }
+  el.innerHTML = config.variables.map((v, i) => {
+    const cur = lastState.V[v.addr];
+    return `<div class="var-row">
+      <div>
+        <div class="var-label">${escapeHtml(v.label)}</div>
+        <div class="var-addr">${v.addr} (${v.type})</div>
+      </div>
+      <div><div class="var-label" style="text-align:center;font-family:'JetBrains Mono',monospace;color:var(--orange)">${cur == null ? '—' : cur}</div><div class="var-addr" style="text-align:center">Hiện tại</div></div>
+      <input id="varInput_${i}" type="number" placeholder="Giá trị mới">
+      <button class="btn btn-primary" onclick="writeVar(${i})">✏ Ghi</button>
+    </div>`;
+  }).join('');
+}
+
+async function writeVar(idx) {
+  const v = config.variables[idx];
+  const input = document.getElementById('varInput_' + idx);
+  const val = parseInt(input.value);
+  if (!Number.isFinite(val)) { showToast('⚠️ Nhập số hợp lệ'); return; }
+  try {
+    await adapter().writeNum(v.addr, val);
+    lastState.V[v.addr] = val;
+    renderVars();
+    showToast(`✏ ${v.addr} = ${val}`);
+    input.value = '';
+  } catch(e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// RENDER: CONFIG LISTS
+// ═══════════════════════════════════════════════════════════════════════
+function renderConfigForm() {
+  document.getElementById('cfgMode').value = config.mode;
+  document.getElementById('cfgUrl').value  = config.baseUrl;
+  document.getElementById('cfgProxyUrl').value = config.proxyUrl;
+  document.getElementById('cfgUser').value = config.username;
+  document.getElementById('cfgPass').value = config.password;
+  document.getElementById('cfgPoll').value = config.pollMs;
+  updateModeVisibility();
+  renderCfgList('outputs', 'cfgOutputs', false);
+  renderCfgList('inputs',  'cfgInputs',  false);
+  renderCfgList('memory',  'cfgMemory',  false);
+  renderCfgList('variables', 'cfgVars',  true);
+}
+
+function updateModeVisibility() {
+  const mode = document.getElementById('cfgMode').value;
+  document.getElementById('cfgProxyRow').style.display    = mode === 'modbus-proxy' ? '' : 'none';
+  document.getElementById('cfgLogoAuthRow').style.display = mode === 'logo-web' ? '' : 'none';
+}
+
+document.addEventListener('change', e => {
+  if (e.target?.id === 'cfgMode') updateModeVisibility();
+});
+
+function renderCfgList(key, elId, hasType) {
+  const el = document.getElementById(elId);
+  const items = config[key] || [];
+  if (!items.length) { el.innerHTML = '<div class="empty">Trống</div>'; return; }
+  el.innerHTML = items.map((it, i) => `
+    <div class="cfg-list-row" data-key="${key}" data-idx="${i}">
+      <input class="cfg-addr" value="${escapeAttr(it.addr || '')}" placeholder="${key === 'variables' ? 'VW0' : key === 'outputs' ? 'Q1' : key === 'inputs' ? 'I1' : 'M1'}">
+      <input class="cfg-label" value="${escapeAttr(it.label || '')}" placeholder="Tên hiển thị">
+      ${hasType ? `<select class="cfg-type">
+        ${['bit','byte','word','dword'].map(t => `<option value="${t}" ${it.type===t?'selected':''}>${t}</option>`).join('')}
+      </select>` : '<span></span>'}
+      <button class="btn btn-danger btn-del" onclick="removeCfgItem('${key}', ${i})">🗑</button>
+    </div>`).join('');
+}
+
+function collectCfgList(key) {
+  const elId = { outputs:'cfgOutputs', inputs:'cfgInputs', memory:'cfgMemory', variables:'cfgVars' }[key];
+  const rows = document.querySelectorAll(`#${elId} .cfg-list-row`);
+  config[key] = Array.from(rows).map(r => {
+    const item = {
+      addr: r.querySelector('.cfg-addr').value.trim(),
+      label: r.querySelector('.cfg-label').value.trim(),
+    };
+    const t = r.querySelector('.cfg-type');
+    if (t) item.type = t.value;
+    return item;
+  }).filter(x => x.addr);
+}
+
+function addCfgItem(key, defaults) {
+  config[key].push({ ...defaults });
+  renderConfigForm();
+}
+
+function removeCfgItem(key, idx) {
+  collectCfgList(key);
+  config[key].splice(idx, 1);
+  renderConfigForm();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// POLLING LOOP
+// ═══════════════════════════════════════════════════════════════════════
+async function pollOnce() {
+  const a = adapter();
+  const sample = { ts: Date.now(), vals: {} };
+  const t0 = performance.now();
+  let okCount = 0, totalCount = 0;
+
+  // ── Fast path: modbus-proxy có endpoint /batch — 1 request thay vì N
+  if (config.mode === 'modbus-proxy') {
+    const points = [
+      ...config.inputs.map(it  => ({ addr: it.addr, area: 'I', type: 'bit' })),
+      ...config.outputs.map(it => ({ addr: it.addr, area: 'Q', type: 'bit' })),
+      ...config.memory.map(it  => ({ addr: it.addr, area: 'M', type: 'bit' })),
+      ...config.variables.map(it => ({ addr: it.addr, area: 'V', type: it.type })),
+    ];
+    try {
+      const r = await a.readBatch(points.map(p => ({ addr: p.addr, type: p.type })));
+      points.forEach(p => {
+        const v = r.values?.[p.addr];
+        totalCount++;
+        if (v != null) okCount++;
+        if (p.area === 'V') {
+          lastState.V[p.addr] = v;
+          if (v != null) sample.vals[p.addr] = (typeof v === 'boolean' ? (v?1:0) : v);
+        } else {
+          lastState[p.area][p.addr] = (p.type === 'bit') ? !!v : v;
+        }
+      });
+      lastPingMs = r.ms ?? Math.round(performance.now() - t0);
+      lastPingOk = okCount > 0;
+    } catch (e) {
+      lastPingMs = Math.round(performance.now() - t0);
+      lastPingOk = false;
+    }
+  } else {
+    // ── Slow path: gọi từng request riêng (demo + logo-web)
+    const tasks = [];
+    const probe = (taskPromise) => {
+      totalCount++;
+      return taskPromise.then(v => { okCount++; return v; });
+    };
+
+    config.inputs.forEach(it  => tasks.push(probe(a.readBit(it.addr)).then(v => { lastState.I[it.addr] = v; }).catch(()=>{})));
+    config.outputs.forEach(it => tasks.push(probe(a.readBit(it.addr)).then(v => { lastState.Q[it.addr] = v; }).catch(()=>{})));
+    config.memory.forEach(it  => tasks.push(probe(a.readBit(it.addr)).then(v => { lastState.M[it.addr] = v; }).catch(()=>{})));
+    config.variables.forEach(it => tasks.push(
+      probe(it.type === 'bit' ? a.readBit(it.addr) : a.readNum(it.addr))
+        .then(v => { lastState.V[it.addr] = v; sample.vals[it.addr] = (typeof v === 'boolean' ? (v?1:0) : v); })
+        .catch(()=>{})
+    ));
+
+    await Promise.allSettled(tasks);
+
+    if (config.mode !== 'demo' && totalCount > 0) {
+      lastPingMs = Math.round((performance.now() - t0) / totalCount);
+      lastPingOk = okCount > 0;
+    }
+  }
+  lastPollAt = Date.now();
+
+  chartData.push(sample);
+  if (chartData.length > 300) chartData.shift();
+  document.getElementById('chartLen').textContent = chartData.length;
+
+  if (currentTab === 'output') renderOutputs();
+  else if (currentTab === 'status') renderStatus();
+  else if (currentTab === 'vars') renderVars();
+  else if (currentTab === 'chart') drawChart();
+}
+
+function restartPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => { pollOnce().catch(e => console.warn(e)); }, config.pollMs);
+  pollOnce().catch(()=>{});
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CHART
+// ═══════════════════════════════════════════════════════════════════════
+const chartColors = ['#f97316', '#10b981', '#0ea5e9', '#db2777', '#7c3aed', '#facc15', '#ef4444', '#22d3ee'];
+let chartHidden = new Set();
+
+function drawChart() {
+  const canvas = document.getElementById('chartCanvas');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // legend
+  const legend = document.getElementById('chartLegend');
+  legend.innerHTML = config.variables.map((v, i) => {
+    const color = chartColors[i % chartColors.length];
+    const hidden = chartHidden.has(v.addr);
+    return `<label style="${hidden?'opacity:.4':''}"><input type="checkbox" ${hidden?'':'checked'} onchange="toggleChartLine('${v.addr}')" style="display:none"><span class="swatch" style="background:${color}"></span>${escapeHtml(v.label)} (${v.addr})</label>`;
+  }).join('');
+
+  if (chartData.length < 2 || !config.variables.length) {
+    ctx.fillStyle = '#94a3b8'; ctx.font = '13px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Chưa đủ dữ liệu — đợi polling thu thập...', W/2, H/2);
+    return;
+  }
+
+  // padding
+  const padL = 40, padR = 12, padT = 12, padB = 28;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // range
+  const activeVars = config.variables.filter(v => !chartHidden.has(v.addr));
+  let minV = Infinity, maxV = -Infinity;
+  activeVars.forEach(v => {
+    chartData.forEach(s => {
+      const x = s.vals[v.addr];
+      if (typeof x === 'number') { minV = Math.min(minV, x); maxV = Math.max(maxV, x); }
+    });
+  });
+  if (!Number.isFinite(minV)) { minV = 0; maxV = 1; }
+  if (minV === maxV) { minV -= 1; maxV += 1; }
+  const range = maxV - minV;
+
+  const t0 = chartData[0].ts, t1 = chartData[chartData.length-1].ts;
+  const tRange = Math.max(1, t1 - t0);
+
+  // grid + axes
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+  ctx.fillStyle = '#94a3b8'; ctx.font = '10px JetBrains Mono, monospace';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + plotH * i / 4;
+    const v = maxV - range * i / 4;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+    ctx.fillText(v.toFixed(range < 10 ? 1 : 0), padL - 6, y);
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const x = padL + plotW * i / ticks;
+    const t = new Date(t0 + tRange * i / ticks);
+    const lbl = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
+    ctx.fillText(lbl, x, H - padB + 6);
+  }
+
+  // lines
+  config.variables.forEach((v, vi) => {
+    if (chartHidden.has(v.addr)) return;
+    const color = chartColors[vi % chartColors.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    let started = false;
+    chartData.forEach(s => {
+      const val = s.vals[v.addr];
+      if (typeof val !== 'number') return;
+      const x = padL + plotW * (s.ts - t0) / tRange;
+      const y = padT + plotH * (1 - (val - minV) / range);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+}
+
+function toggleChartLine(addr) {
+  if (chartHidden.has(addr)) chartHidden.delete(addr); else chartHidden.add(addr);
+  drawChart();
+}
+
+function exportChartCSV() {
+  if (!chartData.length) { showToast('Chưa có dữ liệu'); return; }
+  const addrs = config.variables.map(v => v.addr);
+  const header = ['timestamp', 'iso', ...addrs].join(',');
+  const rows = chartData.map(s => {
+    const d = new Date(s.ts);
+    return [s.ts, d.toISOString(), ...addrs.map(a => s.vals[a] ?? '')].join(',');
+  });
+  const csv = header + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'plc-log-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('📥 Đã tải CSV');
+}
+
+window.addEventListener('resize', () => { if (currentTab === 'chart') drawChart(); });
+
+// ═══════════════════════════════════════════════════════════════════════
+// UTIL
+// ═══════════════════════════════════════════════════════════════════════
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+function renderAll() {
+  renderOutputs();
+  renderStatus();
+  renderVars();
+  renderConfigForm();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════
+renderAll();
+testConnection();
+restartPolling();
+
+</script>
+</body>
+</html>

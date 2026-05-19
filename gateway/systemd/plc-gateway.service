@@ -1,0 +1,18 @@
+[Unit]
+Description=PLC LOGO! Gateway (Modbus ↔ MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/plc-logo/gateway
+ExecStart=/usr/bin/node gateway.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+{
+  "name": "plc-logo-gateway",
+  "version": "0.1.0",
+  "description": "Cầu nối LOGO! 230RCE (Modbus TCP) ↔ MQTT trung tâm",
+  "main": "gateway.js",
+  "scripts": {
+    "start": "node gateway.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "modbus-serial": "^8.0.16",
+    "mqtt": "^5.10.1"
+  }
+}
