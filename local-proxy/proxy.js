@@ -16,6 +16,7 @@
 'use strict';
 
 const http = require('http');
+const net = require('net');
 const ModbusRTU = require('modbus-serial');
 
 // ── CLI ARGS ──────────────────────────────────────────────────────────
@@ -347,6 +348,161 @@ const TEST_RTC_COOLDOWN_MS = 60000;  // 60 giây giữa các FC06 test write
 let lastFc16TestTs = 0;
 const FC16_TEST_COOLDOWN_MS = 300000;  // 5 phút
 
+// ── S7 protocol helpers (cho PLC Stop/Start qua port 102) ──
+const S7_PORT = 102;
+const S7_TSAP_SRC = [0x02, 0x00];  // Source TSAP 0x0200 (PG/Soft Comfort)
+const S7_TSAP_DST = [0x02, 0x00];  // Dest TSAP 0x0200 (LOGO! base module)
+
+function s7BuildConnRequest() {
+  // COTP Connection Request (CR-TPDU) — 22 bytes total
+  return Buffer.from([
+    0x03, 0x00, 0x00, 0x16,                                  // TPKT v3, len=22
+    0x11, 0xE0, 0x00, 0x00, 0x00, 0x01, 0x00,                // COTP CR
+    0xC0, 0x01, 0x0A,                                        // TPDU size 1024
+    0xC1, 0x02, S7_TSAP_SRC[0], S7_TSAP_SRC[1],              // Source TSAP
+    0xC2, 0x02, S7_TSAP_DST[0], S7_TSAP_DST[1],              // Dest TSAP
+  ]);
+}
+
+function s7BuildSetupComm() {
+  // S7 SetupCommunication — negotiate PDU size
+  return Buffer.from([
+    0x03, 0x00, 0x00, 0x19,                                  // TPKT len=25
+    0x02, 0xF0, 0x80,                                        // COTP DT
+    0x32, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00, 0x08, 0x00, 0x00, // S7 header
+    0xF0, 0x00, 0x00, 0x01, 0x00, 0x01, 0x03, 0xC0,           // Params: max amq=1/1, PDU=960
+  ]);
+}
+
+function s7BuildStop() {
+  // S7 PLC STOP (function 0x29) — 33 bytes total
+  return Buffer.from([
+    0x03, 0x00, 0x00, 0x21,                                  // TPKT len=33
+    0x02, 0xF0, 0x80,                                        // COTP DT
+    0x32, 0x01, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x10, 0x00, 0x00, // S7 header (param len=16)
+    0x29, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09,                // STOP function
+    0x50, 0x5F, 0x50, 0x52, 0x4F, 0x47, 0x52, 0x41, 0x4D,    // "P_PROGRAM"
+  ]);
+}
+
+function s7BuildStart() {
+  // S7 PLC START / warm start (function 0x28) — 37 bytes total
+  return Buffer.from([
+    0x03, 0x00, 0x00, 0x25,                                  // TPKT len=37
+    0x02, 0xF0, 0x80,                                        // COTP DT
+    0x32, 0x01, 0x00, 0x00, 0x0E, 0x00, 0x00, 0x14, 0x00, 0x00, // S7 header (param len=20)
+    0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFD, 0x00, 0x00, 0x09, // START function
+    0x50, 0x5F, 0x50, 0x52, 0x4F, 0x47, 0x52, 0x41, 0x4D, 0x00, // "P_PROGRAM\0"
+  ]);
+}
+
+async function s7StopStart(action) {
+  if (action !== 'stop' && action !== 'start') throw new Error('action phải là stop hoặc start');
+
+  // Disconnect modbus-serial trước (S7 + Modbus dùng port khác nhưng tránh conflict
+  // nếu LOGO! limit total connections).
+  const wasConnected = plcConnected;
+  plcConnected = false;
+  try {
+    if (client._port && client._port._client) client._port._client.destroy();
+    client.close(() => {});
+  } catch {}
+  await new Promise(r => setTimeout(r, 300));
+
+  let result;
+  try {
+    result = await s7Exchange(action);
+  } finally {
+    setTimeout(() => { if (!plcConnected) connectModbus().catch(() => {}); }, 500);
+  }
+  return result;
+}
+
+function s7Exchange(action) {
+  return new Promise((resolve, reject) => {
+    const sock = new net.Socket();
+    sock.setNoDelay(true);
+    let received = Buffer.alloc(0);
+    let phase = 'CR';   // CR_SENT → SETUP_SENT → CMD_SENT → DONE
+    let settled = false;
+    const logs = [];
+
+    const finish = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { sock.destroy(); } catch {}
+      fn(val);
+    };
+    const timeout = setTimeout(() => finish(reject, new Error(`S7 timeout in phase ${phase}`)), 5000);
+
+    function parseTpktPdu(buf) {
+      // Một TPKT PDU: bytes 0-3 = TPKT (03 00 LL LL), rest = COTP + payload
+      if (buf.length < 4) return null;
+      const len = buf.readUInt16BE(2);
+      if (buf.length < len) return null;
+      return { pdu: buf.slice(0, len), rest: buf.slice(len) };
+    }
+
+    sock.on('data', chunk => {
+      received = Buffer.concat([received, chunk]);
+      while (true) {
+        const r = parseTpktPdu(received);
+        if (!r) break;
+        received = r.rest;
+        logs.push(`RX[${phase}] ${r.pdu.length}B: ${r.pdu.toString('hex').toUpperCase().slice(0, 60)}...`);
+
+        if (phase === 'CR') {
+          // CC received (COTP type 0xD0). Gửi SetupComm.
+          const cotp = r.pdu[5];
+          if ((cotp & 0xF0) !== 0xD0) return finish(reject, new Error('S7 CR rejected: ' + r.pdu.toString('hex')));
+          phase = 'SETUP';
+          const setup = s7BuildSetupComm();
+          logs.push(`TX[SETUP] ${setup.length}B`);
+          sock.write(setup);
+        } else if (phase === 'SETUP') {
+          // Setup response received. Gửi command.
+          phase = 'CMD';
+          const cmd = action === 'stop' ? s7BuildStop() : s7BuildStart();
+          logs.push(`TX[${action.toUpperCase()}] ${cmd.length}B`);
+          sock.write(cmd);
+        } else if (phase === 'CMD') {
+          // Response của STOP/START. Check error class (byte 17-18 trong S7 ack_data header).
+          phase = 'DONE';
+          // S7 ack_data: TPKT(4) + COTP(3) + S7 hdr (ROSCTR=3, redundancy 2, pdu ref 2, param len 2, data len 2, err class 1, err code 1) = 12 bytes header
+          // Sau header là params (varies)
+          let errClass = null, errCode = null;
+          if (r.pdu.length >= 19) {
+            errClass = r.pdu[17];
+            errCode  = r.pdu[18];
+          }
+          finish(resolve, {
+            ok: errClass === 0,
+            action,
+            errClass, errCode,
+            logs,
+            response: r.pdu.toString('hex').toUpperCase().match(/.{2}/g).join(' '),
+          });
+        }
+      }
+    });
+
+    sock.on('error', err => {
+      let msg = err.message;
+      if (err.code === 'ECONNREFUSED') msg = 'PLC từ chối kết nối port 102 (S7 server có thể đã tắt hoặc đang transfer)';
+      else if (err.code === 'ECONNRESET') msg = 'PLC reset S7 connection (RST)';
+      finish(reject, new Error(msg));
+    });
+    sock.on('close', () => { if (!settled) finish(reject, new Error(`S7 closed in phase ${phase}`)); });
+
+    sock.connect(S7_PORT, PLC_HOST, () => {
+      const cr = s7BuildConnRequest();
+      logs.push(`TX[CR] ${cr.length}B`);
+      sock.write(cr);
+    });
+  });
+}
+
 const routes = {
   'GET /health': async () => ({
     ok: true,
@@ -497,6 +653,101 @@ const routes = {
     });
   },
 
+  // STOP PLC qua S7 protocol (TCP 102). LOGO! 8 hỗ trợ S7 connection.
+  // Flow: TCP connect → COTP CR/CC → S7 SetupComm → S7 STOP (0x29) → close.
+  'POST /plc-stop':  async () => s7StopStart('stop'),
+
+  // START PLC qua S7 (function 0x28 = warm start).
+  'POST /plc-start': async () => s7StopStart('start'),
+
+  // Gửi raw Modbus TCP frame. Strategy: tạm disconnect modbus-serial, mở
+  // socket riêng để send/receive, đóng, reconnect modbus-serial.
+  // → Tránh: TID collision với modbus-serial parser, LOGO! 8-conn limit.
+  // → Trade-off: polling pause ~1-2 giây cho mỗi raw frame call.
+  'POST /raw-frame': async (req) => {
+    const body = await readBody(req);
+    if (typeof body.hex !== 'string') throw new Error('Thiếu hex string');
+    const cleaned = body.hex.replace(/[\s,:-]/g, '');
+    if (!/^[0-9a-fA-F]+$/.test(cleaned)) throw new Error('Hex string không hợp lệ');
+    if (cleaned.length % 2 !== 0) throw new Error('Hex string phải chẵn ký tự');
+    const frame = Buffer.from(cleaned, 'hex');
+    if (frame.length < 8) throw new Error('Frame quá ngắn (cần >= 8 byte MBAP+FC)');
+    if (frame.length > 260) throw new Error('Frame quá dài (>260 byte)');
+
+    console.warn('[raw-frame] gửi:', frame.toString('hex').toUpperCase().match(/.{2}/g).join(' '));
+
+    // Đi qua withModbus queue để block polling trong lúc disconnect/reconnect
+    return withModbus(async () => {
+      // 1. Disconnect modbus-serial tạm thời
+      const wasConnected = plcConnected;
+      plcConnected = false;
+      try {
+        if (client._port && client._port._client) {
+          client._port._client.destroy();
+        }
+        client.close(() => {});
+      } catch {}
+      await new Promise(r => setTimeout(r, 400));  // đợi LOGO! release slot
+
+      // 2. Mở socket dedicated, gửi frame, đọc response
+      const result = await new Promise((resolve, reject) => {
+        const sock = new net.Socket();
+        sock.setNoDelay(true);
+        let received = Buffer.alloc(0);
+        let settled = false;
+        const t0 = Date.now();
+        const finish = (fn, val) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          try { sock.destroy(); } catch {}
+          fn(val);
+        };
+        const timeout = setTimeout(
+          () => finish(reject, new Error(`Timeout 3s (nhận ${received.length} byte)`)),
+          3000
+        );
+
+        sock.on('data', chunk => {
+          received = Buffer.concat([received, chunk]);
+          if (received.length >= 6) {
+            const expectedTotal = 6 + received.readUInt16BE(4);
+            if (received.length >= expectedTotal) {
+              const elapsed = Date.now() - t0;
+              finish(resolve, {
+                ok: true,
+                elapsedMs: elapsed,
+                sent:     { hex: frame.toString('hex').toUpperCase().match(/.{2}/g).join(' '), len: frame.length },
+                received: { hex: received.slice(0, expectedTotal).toString('hex').toUpperCase().match(/.{2}/g).join(' '), len: expectedTotal },
+              });
+            }
+          }
+        });
+        sock.on('error', err => {
+          let msg = err.message;
+          if (err.code === 'ECONNRESET') msg = 'PLC reset connection (RST) — có thể bị quá tải hoặc firmware bug';
+          else if (err.code === 'ECONNREFUSED') msg = 'PLC refused — Modbus Slave disabled hoặc max connections';
+          finish(reject, new Error(msg));
+        });
+        sock.on('close', () => {
+          if (!settled) finish(reject, new Error(`Connection đóng sau ${received.length} byte (PLC FIN)`));
+        });
+        sock.connect(PLC_PORT, PLC_HOST, () => {
+          // Đợi 30ms cho TCP handshake settle trước khi gửi frame
+          setTimeout(() => { try { sock.write(frame); } catch (e) { finish(reject, e); } }, 30);
+        });
+      }).catch(e => ({ ok: false, error: e.message }));
+
+      // 3. Reconnect modbus-serial (best effort, không block response)
+      setTimeout(() => {
+        if (!plcConnected) connectModbus().catch(() => {});
+      }, 300);
+
+      if (!result.ok) throw new Error(result.error);
+      return result;
+    });
+  },
+
   // 🔥 DESTRUCTIVE FC16 test — reproduce frame mà AI hướng dẫn:
   //   00 01 00 00 00 0D 01 10 01 EC 00 04 08 YY MM DD HH MN SS XX
   // Đã wipe program 2 lần trong session 2026-05-19. Add lại theo yêu cầu user.
@@ -612,7 +863,9 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(HTTP_PORT, '127.0.0.1', () => {
   console.log(`[http] sẵn sàng — http://localhost:${HTTP_PORT}`);
-  console.log(`[http] endpoints: GET /health /time /rtc, POST /read /write /batch /rtc /frames/clear, GET /frames`);
+  // Auto-list từ routes object để không bao giờ outdate
+  console.log(`[http] endpoints:`);
+  for (const key of Object.keys(routes)) console.log(`         ${key}`);
 });
 
 // ── BOOTSTRAP ─────────────────────────────────────────────────────────

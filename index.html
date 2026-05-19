@@ -442,6 +442,41 @@
 
       <div id="labResult" style="margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap"></div>
 
+      <!-- ── 🛑 PLC STOP / START qua S7 protocol ── -->
+      <div style="margin-top:16px;padding:12px;border:2px solid var(--navy);background:#f0f9ff;border-radius:8px">
+        <div style="font-weight:800;color:var(--navy);margin-bottom:6px">🛑 PLC Stop / Start (qua S7 protocol port 102)</div>
+        <div style="font-size:12px;margin-bottom:10px">
+          Trước khi modify RTC/setpoint qua raw frame: STOP PLC để chương trình không ghi đè. Sau xong → START lại.
+          <br><b>Lưu ý:</b> Khi STOP, đèn Q sẽ OFF hết (program không chạy). Output relay về trạng thái default.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-danger" onclick="plcStop()">🛑 STOP PLC</button>
+          <button class="btn btn-primary" onclick="plcStart()">▶ START PLC</button>
+          <span id="plcStateBadge" style="font-size:12px;color:var(--muted)">trạng thái: ?</span>
+        </div>
+        <div id="s7Result" style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap;display:none"></div>
+      </div>
+
+      <!-- ── ⚡ RAW FRAME INPUT — gửi hex tùy ý ── -->
+      <div style="margin-top:16px;padding:12px;border:2px solid var(--orange);background:#fff7ed;border-radius:8px">
+        <div style="font-weight:800;color:var(--orange);margin-bottom:6px">⚡ Raw frame — gửi hex string trực tiếp</div>
+        <div style="font-size:12px;margin-bottom:10px">
+          Paste/gõ Modbus TCP frame dưới dạng hex. Proxy mở socket RIÊNG (không qua queue polling), gửi raw bytes, đọc response. Hỗ trợ space/dash/colon/comma giữa các byte.
+        </div>
+        <textarea id="rawFrameInput" rows="2" placeholder="vd: 00 01 00 00 00 06 01 03 01 EC 00 04   (đọc HR 492-495)"
+                  oninput="parseRawFrame()"
+                  style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
+        <div id="rawFrameParse" style="font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:6px;min-height:18px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" onclick="sendRawFrame()">📡 Gửi raw frame</button>
+          <button class="btn btn-outline" onclick="rawFramePreset('read-rtc')">⚙ Read HR 492-495 (RTC)</button>
+          <button class="btn btn-outline" onclick="rawFramePreset('read-q')">⚙ Read Q1-Q4</button>
+          <button class="btn btn-outline" onclick="rawFramePreset('fc16-rtc')">⚙ FC16 set RTC (RISK)</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('rawFrameInput').value='';parseRawFrame()">🗑 Clear</button>
+        </div>
+        <div id="rawFrameResult" style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap"></div>
+      </div>
+
       <!-- ── 🔥 DESTRUCTIVE FC16 TEST (đã wipe 2 lần) ── -->
       <div style="margin-top:16px;padding:12px;border:2px dashed var(--red);background:#fef2f2;border-radius:8px">
         <div style="font-weight:800;color:var(--red);margin-bottom:6px">🔥 FC16 test — frame AI hướng dẫn (ĐÃ WIPE 2 LẦN)</div>
@@ -1258,6 +1293,157 @@ async function scApplyToLogo() {
   } catch (e) {
     resultEl.textContent = '✗ FAIL: ' + e.message;
     showToast('❌ ' + e.message);
+  }
+}
+
+// ── 🛑 PLC Stop/Start qua S7 protocol ──
+async function plcStop() {
+  if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
+  if (!confirm('🛑 STOP PLC?\n\nChương trình ngừng chạy → output Q1/Q2/Q3/Q4 tắt hết, đèn off.\n\nNhớ START lại sau khi xong test.')) return;
+  await s7Action('stop');
+}
+
+async function plcStart() {
+  if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
+  await s7Action('start');
+}
+
+async function s7Action(action) {
+  const resultEl = document.getElementById('s7Result');
+  const badge = document.getElementById('plcStateBadge');
+  resultEl.style.display = 'block';
+  resultEl.textContent = `⏳ Gửi S7 ${action.toUpperCase()}...`;
+  if (badge) badge.textContent = 'trạng thái: ⏳ đang gửi...';
+  try {
+    const res = await fetch(config.proxyUrl + (action === 'stop' ? '/plc-stop' : '/plc-start'), { method: 'POST' });
+    const txt = await res.text();
+    let j; try { j = JSON.parse(txt); } catch { j = { error: txt }; }
+    if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    const success = j.ok;
+    resultEl.textContent =
+      `${success ? '✓' : '⚠'} S7 ${action.toUpperCase()} ${success ? 'success' : 'response có error'}\n` +
+      `\n` +
+      `S7 errClass=0x${(j.errClass||0).toString(16).padStart(2,'0')} errCode=0x${(j.errCode||0).toString(16).padStart(2,'0')}\n` +
+      `\n` +
+      `Protocol log:\n${j.logs.map(l => '  ' + l).join('\n')}\n` +
+      `\n` +
+      `Last response: ${j.response}`;
+    if (success) {
+      if (badge) badge.innerHTML = action === 'stop'
+        ? `trạng thái: <b style="color:var(--red)">🛑 STOPPED</b>`
+        : `trạng thái: <b style="color:var(--green)">▶ RUNNING</b>`;
+      showToast(`✓ PLC ${action === 'stop' ? 'STOPPED' : 'RUNNING'}`);
+    } else {
+      if (badge) badge.innerHTML = `trạng thái: <b style="color:var(--amber)">? error</b>`;
+      showToast(`⚠ S7 ${action} response có error class ${j.errClass}`);
+    }
+  } catch (e) {
+    resultEl.textContent = `✗ FAIL: ${e.message}`;
+    if (badge) badge.innerHTML = `trạng thái: <b style="color:var(--red)">FAIL</b>`;
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ── ⚡ Raw frame sender (hex string → Modbus TCP) ──
+const FC_NAMES = {
+  1:'ReadCoils', 2:'ReadDI', 3:'ReadHR', 4:'ReadIR',
+  5:'WriteCoil', 6:'WriteReg', 15:'WriteCoils', 16:'WriteRegs',
+};
+
+function parseRawFrame() {
+  const txt = document.getElementById('rawFrameInput').value;
+  const out = document.getElementById('rawFrameParse');
+  const cleaned = txt.replace(/[\s,:-]/g, '');
+  if (!cleaned) { out.textContent = ''; return; }
+  if (!/^[0-9a-fA-F]+$/.test(cleaned)) { out.innerHTML = '<span style="color:var(--red)">✗ Chứa ký tự không phải hex</span>'; return; }
+  if (cleaned.length % 2 !== 0) { out.innerHTML = '<span style="color:var(--amber)">⚠ Chẵn ký tự (lẻ rồi)</span>'; return; }
+  const bytes = [];
+  for (let i = 0; i < cleaned.length; i += 2) bytes.push(parseInt(cleaned.substr(i, 2), 16));
+  if (bytes.length < 8) { out.innerHTML = `<span style="color:var(--amber)">⚠ ${bytes.length} byte — Modbus TCP cần ≥8</span>`; return; }
+  const tid = (bytes[0]<<8) | bytes[1];
+  const pid = (bytes[2]<<8) | bytes[3];
+  const len = (bytes[4]<<8) | bytes[5];
+  const uid = bytes[6];
+  const fc  = bytes[7];
+  let detail = '';
+  if ([1,2,3,4].includes(fc) && bytes.length >= 12) {
+    const addr = (bytes[8]<<8) | bytes[9];
+    const cnt  = (bytes[10]<<8) | bytes[11];
+    detail = `addr=${addr} cnt=${cnt}`;
+  } else if ([5,6].includes(fc) && bytes.length >= 12) {
+    const addr = (bytes[8]<<8) | bytes[9];
+    const val  = (bytes[10]<<8) | bytes[11];
+    detail = `addr=${addr} value=0x${val.toString(16).padStart(4,'0').toUpperCase()}`;
+  } else if ([15,16].includes(fc) && bytes.length >= 13) {
+    const addr = (bytes[8]<<8) | bytes[9];
+    const cnt  = (bytes[10]<<8) | bytes[11];
+    detail = `addr=${addr} cnt=${cnt} bytes=${bytes[12]}`;
+  }
+  const fcName = FC_NAMES[fc] || `FC${fc}`;
+  // Warning cho frame nguy hiểm
+  let warn = '';
+  if (fc === 16 && bytes.length >= 12) {
+    const addr = (bytes[8]<<8) | bytes[9];
+    const cnt = (bytes[10]<<8) | bytes[11];
+    if (addr >= 492 && addr <= 495 && cnt > 0 && (addr+cnt) > 492) {
+      warn = ' <span style="color:var(--red);font-weight:700">⚠ DANGEROUS: FC16 vào HR 492-495 đã wipe program 2 lần</span>';
+    }
+  }
+  out.innerHTML =
+    `<span style="color:var(--green)">✓ ${bytes.length} byte</span> · ` +
+    `TID=${tid} LEN=${len} UID=${uid} ` +
+    `<b>${fcName}</b> ${detail}` + warn;
+}
+
+function rawFramePreset(name) {
+  const presets = {
+    'read-rtc':  '00 01 00 00 00 06 01 03 01 EC 00 04',   // FC03 read HR 492-495
+    'read-q':    '00 02 00 00 00 06 01 01 20 00 00 04',   // FC01 read coils 8192-8195
+    'fc16-rtc':  '00 03 00 00 00 0D 01 10 01 EC 00 04 08 00 1A 05 13 0F 36 00 33',
+  };
+  if (!presets[name]) return;
+  document.getElementById('rawFrameInput').value = presets[name];
+  parseRawFrame();
+}
+
+async function sendRawFrame() {
+  if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
+  const txt = document.getElementById('rawFrameInput').value;
+  const cleaned = txt.replace(/[\s,:-]/g, '');
+  if (!/^[0-9a-fA-F]+$/.test(cleaned) || cleaned.length % 2 !== 0 || cleaned.length < 16) {
+    showToast('⚠️ Hex string không hợp lệ (cần ≥8 byte)'); return;
+  }
+
+  // Auto-warn nếu FC16 vào dangerous area
+  const bytes = [];
+  for (let i = 0; i < cleaned.length; i += 2) bytes.push(parseInt(cleaned.substr(i, 2), 16));
+  if (bytes[7] === 16 && bytes.length >= 12) {
+    const addr = (bytes[8]<<8) | bytes[9];
+    if (addr >= 492 && addr <= 495) {
+      if (!confirm(`⚠ DANGER\n\nFrame này là FC16 vào HR ${addr} — đã wipe program 2 lần.\n\nVẫn gửi?`)) return;
+    }
+  }
+
+  const resultEl = document.getElementById('rawFrameResult');
+  resultEl.textContent = '⏳ Đang gửi...';
+  const t0 = Date.now();
+  try {
+    const res = await fetch(config.proxyUrl + '/raw-frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hex: txt }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    const elapsed = Date.now() - t0;
+    resultEl.textContent =
+      `✓ Round-trip ${elapsed}ms (proxy báo ${j.elapsedMs}ms socket)\n` +
+      `\n` +
+      `TX (${j.sent.len} byte):\n  ${j.sent.hex}\n` +
+      `\n` +
+      `RX (${j.received.len} byte):\n  ${j.received.hex}`;
+  } catch (e) {
+    resultEl.textContent = `✗ FAIL: ${e.message}`;
   }
 }
 
