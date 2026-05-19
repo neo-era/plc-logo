@@ -126,6 +126,64 @@
       box-shadow: 0 0 12px rgba(16,185,129,.6), inset 0 -2px 4px rgba(0,0,0,.2);
     }
     .io-name { font-size: 10px; color: var(--muted); line-height: 1.2; min-height: 22px; }
+    /* Ô tác động được (NI/NQ/Q/M) — hover + tap feedback */
+    .io-cell.tap { cursor: pointer; user-select: none; -webkit-user-select: none; }
+    .io-cell.tap:hover { border-color: var(--orange); transform: translateY(-1px); }
+    .io-cell.tap:active { transform: scale(.96); }
+    .io-cell.tap .io-addr::after { content: ' ⊕'; color: var(--orange); font-size: 9px; }
+    .io-cell.tap.on .io-addr::after { color: #047857; }
+    .io-cell.busy { opacity: .6; pointer-events: none; }
+
+    /* ── TIMER CARDS ── */
+    .timer-card {
+      border: 1.5px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px;
+      background: linear-gradient(180deg, #fff, #fafbfc);
+    }
+    .timer-card h4 { font-size: 14px; font-weight: 800; margin-bottom: 4px; color: var(--navy); }
+    .timer-card .meta { font-size: 11.5px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 12px; }
+    .timer-row {
+      display: grid; grid-template-columns: 40px 1fr 140px 80px; gap: 8px; align-items: center;
+      padding: 8px 0; border-top: 1px dashed var(--border);
+    }
+    .timer-row .ticon { font-size: 18px; text-align: center; }
+    .timer-row.on  .ticon { color: var(--green); }
+    .timer-row.off .ticon { color: var(--red); }
+    .timer-row .tlabel { font-size: 12px; color: var(--muted); }
+    .timer-row .tlabel b { color: var(--text); font-size: 14px; font-family: 'JetBrains Mono', monospace; display: block; }
+    .hm-input {
+      display: flex; align-items: stretch; border: 1.5px solid var(--border); border-radius: 8px;
+      background: var(--white); overflow: hidden; transition: border-color .15s;
+    }
+    .hm-input:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(249,115,22,.12); }
+    .hm-input input {
+      font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700;
+      width: 50%; min-width: 0; padding: 8px 4px; border: 0; outline: none; text-align: center;
+      -moz-appearance: textfield; appearance: textfield;
+    }
+    .hm-input input::-webkit-outer-spin-button,
+    .hm-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .hm-input .sep { display: flex; align-items: center; padding: 0 2px; color: var(--muted); font-weight: 800; }
+    .timer-bulk { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+
+    /* ── FRAME LOG ── */
+    .frame-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .frame-toolbar .stat { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .frame-toolbar .stat b { color: var(--text); }
+    .frame-log {
+      background: #0f172a; color: #cbd5e1; border-radius: 10px; padding: 10px 12px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 1.5;
+      height: 60vh; min-height: 280px; overflow-y: auto; white-space: pre; tab-size: 4;
+    }
+    .frame-log .row { display: grid; grid-template-columns: 92px 36px 1fr; gap: 8px; padding: 1px 0; }
+    .frame-log .row.tx { color: #60a5fa; }
+    .frame-log .row.rx { color: #86efac; }
+    .frame-log .row .ts  { color: #64748b; }
+    .frame-log .row .tag { font-weight: 800; }
+    .frame-log .row .body .hex { color: #f1f5f9; }
+    .frame-log .row .body .ann { color: #fbbf24; margin-left: 6px; }
+    .frame-log .empty { color: #64748b; padding: 20px; text-align: center; }
+    .frame-log::-webkit-scrollbar { width: 10px; }
+    .frame-log::-webkit-scrollbar-thumb { background: #334155; border-radius: 5px; }
 
     /* ── VARIABLES ── */
     .var-row {
@@ -204,7 +262,9 @@
   <button class="tab-btn active" data-tab="output">📤 Ngõ ra</button>
   <button class="tab-btn" data-tab="status">💡 Trạng thái</button>
   <button class="tab-btn" data-tab="vars">🔢 Biến số</button>
+  <button class="tab-btn" data-tab="timers">⏰ Lịch</button>
   <button class="tab-btn" data-tab="chart">📈 Biểu đồ</button>
+  <button class="tab-btn" data-tab="frames">📡 Frame</button>
   <button class="tab-btn" data-tab="config">⚙ Cài đặt</button>
   <button class="tab-btn" data-tab="help">❓ Hướng dẫn</button>
 </nav>
@@ -254,6 +314,18 @@
     </div>
   </section>
 
+  <!-- ── TAB: LỊCH CHIẾU SÁNG (Timer ON/OFF) ── -->
+  <section id="tab-timers" class="tab-panel">
+    <div class="card">
+      <h3>⏰ Lịch ON/OFF của weekly timer</h3>
+      <div class="card-sub">Cấu hình giờ bật/tắt cho 3 timer chính của chương trình. Định dạng <code>HH:MM</code> (24h). Encoding: <code>VW = (hour &lt;&lt; 8) | minute</code> theo chuẩn LOGO! 8.</div>
+      <div id="timersList"></div>
+      <div class="banner banner-warn" style="margin-top:10px">
+        ⚠️ <div>Thay đổi <b>có hiệu lực ngay</b> trên PLC. Đèn đang bật theo lịch cũ vẫn giữ trạng thái cho đến edge tiếp theo. Để áp dụng tức thì, tắt+bật <code>V0.1</code>/<code>V0.2</code> trong tab Trạng thái.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── TAB: BIỂU ĐỒ ── -->
   <section id="tab-chart" class="tab-panel">
     <div class="card">
@@ -266,6 +338,28 @@
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn btn-outline" onclick="chartData.length=0;drawChart();showToast('Đã xóa biểu đồ')">🗑 Xóa</button>
         <button class="btn btn-outline" onclick="exportChartCSV()">📥 CSV</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TAB: FRAME LOG ── -->
+  <section id="tab-frames" class="tab-panel">
+    <div class="card">
+      <h3>📡 Frame Modbus TCP (PLC ↔ Proxy)</h3>
+      <div class="card-sub">Hiển thị raw bytes của <b>mọi frame</b> proxy gửi/nhận với PLC. <code>TX</code> = proxy → PLC, <code>RX</code> = PLC → proxy. Chỉ khả dụng ở chế độ <b>Modbus Local Proxy</b>.</div>
+      <div class="frame-toolbar">
+        <button class="btn btn-primary" id="frameToggleBtn" onclick="toggleFrameCapture()">⏸ Tạm dừng</button>
+        <button class="btn btn-outline" onclick="clearFramesUI()">🗑 Xóa UI</button>
+        <button class="btn btn-outline" onclick="clearFramesProxy()">🗑 Xóa proxy</button>
+        <button class="btn btn-outline" onclick="copyFrames()">📋 Copy</button>
+        <button class="btn btn-outline" onclick="exportFramesCSV()">📥 CSV</button>
+        <span class="stat">Tổng nhận: <b id="frameCount">0</b> · Hiển thị: <b id="frameShownCount">0</b> · Mất kết nối lần cuối: <b id="frameLastErr">—</b></span>
+      </div>
+      <div class="frame-log" id="frameLog">
+        <div class="empty">Chưa có frame nào. Bật chế độ Modbus Local Proxy và đợi poll cycle đầu tiên.</div>
+      </div>
+      <div class="banner banner-info" style="margin-top:10px">
+        ℹ️ <div>Buffer proxy giữ <b>500 frame</b> gần nhất. UI poll <code>/frames</code> mỗi 500ms, render tối đa 300 dòng (cũ nhất bị cắt). MBAP header decode: <code>TID PID LEN UID FC ...</code>. Function code thường gặp: 01=ReadCoils, 03=ReadHR, 05=WriteCoil, 06=WriteReg.</div>
       </div>
     </div>
   </section>
@@ -370,10 +464,15 @@ node proxy.js --plc-host 192.168.0.3</pre>
       <table style="width:100%;font-size:13px;border-collapse:collapse">
         <thead><tr style="background:var(--bg)"><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Vùng</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Cú pháp</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Mô tả</th></tr></thead>
         <tbody>
-          <tr><td style="padding:8px"><code>I</code></td><td style="padding:8px"><code>I1</code>…<code>I24</code></td><td style="padding:8px">Ngõ vào digital (read-only)</td></tr>
+          <tr><td style="padding:8px"><code>I</code></td><td style="padding:8px"><code>I1</code>…<code>I24</code></td><td style="padding:8px">Ngõ vào digital vật lý (read-only)</td></tr>
           <tr><td style="padding:8px"><code>Q</code></td><td style="padding:8px"><code>Q1</code>…<code>Q20</code></td><td style="padding:8px">Ngõ ra digital</td></tr>
           <tr><td style="padding:8px"><code>M</code></td><td style="padding:8px"><code>M1</code>…<code>M64</code></td><td style="padding:8px">Cờ nhớ bit</td></tr>
+          <tr style="background:#fff7ed"><td style="padding:8px"><code>NI</code></td><td style="padding:8px"><code>NI1</code>…<code>NI64</code></td><td style="padding:8px"><b>Network Input</b> — bit ảo HMI ghi vào để tác động chương trình LOGO!</td></tr>
+          <tr><td style="padding:8px"><code>NQ</code></td><td style="padding:8px"><code>NQ1</code>…<code>NQ64</code></td><td style="padding:8px">Network Output bit</td></tr>
+          <tr><td style="padding:8px"><code>AI/AQ</code></td><td style="padding:8px"><code>AI1</code>…<code>AI8</code>, <code>AQ1</code>…<code>AQ8</code></td><td style="padding:8px">Analog in (read-only) / out</td></tr>
+          <tr><td style="padding:8px"><code>NAI/NAQ</code></td><td style="padding:8px"><code>NAI1</code>…<code>NAI32</code>, <code>NAQ1</code>…<code>NAQ16</code></td><td style="padding:8px">Network analog in/out (HMI ghi được)</td></tr>
           <tr><td style="padding:8px"><code>V</code></td><td style="padding:8px"><code>VB0</code>, <code>VW0</code>, <code>VD0</code></td><td style="padding:8px">Vùng biến số (byte/word/dword)</td></tr>
+          <tr style="background:#fff7ed"><td style="padding:8px"><code>V-bit</code></td><td style="padding:8px"><code>V0.0</code>…<code>V850.7</code></td><td style="padding:8px"><b>Bit trong V-area</b> — dùng khi NI/NQ block trong LOGO! ở chế độ <i>VM mapping</i> (xem Parameter của block)</td></tr>
         </tbody>
       </table>
     </div>
@@ -578,34 +677,62 @@ journalctl -u plc-gateway -f              # xem log realtime</pre>
 // ═══════════════════════════════════════════════════════════════════════
 // CONFIG — lưu trong localStorage
 // ═══════════════════════════════════════════════════════════════════════
-const STORAGE_KEY = 'plcLogoConfig_v2';
+// Tăng version khi đổi schema/default → buộc reload config cho user cũ.
+const STORAGE_KEY = 'plcLogoConfig_v4_lavipco';
 const DEFAULT_CONFIG = {
   mode: 'demo',                       // 'demo' | 'modbus-proxy' | 'logo-web'
-  baseUrl: 'http://192.168.0.3',      // dùng cho logo-web mode
+  baseUrl: 'http://192.168.0.3',      // IP PLC LOGO! 230RCE thực tế (LAVIPCO)
   proxyUrl: 'http://localhost:3001',  // dùng cho modbus-proxy mode
   username: 'admin',
   password: '',
   pollMs: 1500,
+  // Khớp với chương trình NisseLOGOProgram_130825 (LAVIPCO):
+  //   Q2=K1 đèn nhánh 1 (B1), Q3=K2 đèn nhánh 2 (B2), Q4=K3 đèn HPS
   outputs:  [
-    { addr: 'Q1', label: 'Đèn tủ 1' },
-    { addr: 'Q2', label: 'Đèn tủ 2' },
-    { addr: 'Q3', label: 'Contactor A' },
-    { addr: 'Q4', label: 'Contactor B' },
+    { addr: 'Q2', label: 'Đèn nhánh 1 (K1)' },
+    { addr: 'Q3', label: 'Đèn nhánh 2 (K2)' },
+    { addr: 'Q4', label: 'Đèn HPS (K3)' },
   ],
+  // I2 = SW công tắc tổng cho phép manual; I5/I6 = phản hồi contactor.
+  // Các block NI1/NI2/NI3 trong chương trình LOGO! ở chế độ VM mapping
+  // (đọc V0.0/V0.1/V0.2) — nên phải ghi V-bit thay vì NI coil.
+  //   V0.0 → kích NI1 (Force ON 15 phút)
+  //   V0.1 → NI2 logic NC: 1=KHÓA lịch B1, 0=cho phép B1 chạy
+  //   V0.2 → NI3 logic NC: 1=KHÓA lịch B2, 0=cho phép B2 chạy
   inputs: [
-    { addr: 'I1', label: 'Nút bấm 1' },
-    { addr: 'I2', label: 'Cảm biến cửa' },
-    { addr: 'I3', label: 'Photocell' },
-    { addr: 'I4', label: 'Quá tải' },
+    { addr: 'I2',   label: 'SW công tắc tổng' },
+    { addr: 'I5',   label: 'Phản hồi K1' },
+    { addr: 'I6',   label: 'Phản hồi K2' },
+    { addr: 'V0.0', label: '⊕ NI1: Force ON 15 phút' },
+    { addr: 'V0.1', label: '⊕ NI2: Khóa lịch B1 (1=tắt)' },
+    { addr: 'V0.2', label: '⊕ NI3: Khóa lịch B2 (1=tắt)' },
   ],
+  // Cờ nhớ trung gian trong chương trình (chỉ để xem trạng thái).
   memory: [
-    { addr: 'M1', label: 'Chế độ auto' },
-    { addr: 'M2', label: 'Cảnh báo' },
+    { addr: 'M2',  label: 'Trạng thái B1' },
+    { addr: 'M3',  label: 'Trạng thái B2' },
+    { addr: 'M4',  label: 'B1 nội bộ' },
+    { addr: 'M5',  label: 'B2 nội bộ' },
+    { addr: 'M6',  label: 'Manual active' },
+    { addr: 'M10', label: 'Out msg (SF007)' },
   ],
+  // Bản đồ VW theo NisseLOGOProgram_130825:
+  //   VW2/VW4   = T001 B1 weekly  — On / Off time (No.1)
+  //   VW6/VW8   = T002 B2 weekly  — On / Off time (No.1)
+  //   VW10..14  = T004 ManualOnTime — Remaining / Current / Setpoint
+  //   VW16..20  = T005 ForceOnTime  — Remaining / Current / Setpoint
+  //   VW22/VW24 = T006 HPS weekly  — On / Off time (No.1)
   variables: [
-    { addr: 'VW0',  type: 'word', label: 'Timer SP (s)' },
-    { addr: 'VW2',  type: 'word', label: 'Counter giá trị' },
-    { addr: 'VW4',  type: 'word', label: 'Ngưỡng analog' },
+    { addr: 'VW2',  type: 'word', label: 'B1 ON time (17:45)' },
+    { addr: 'VW4',  type: 'word', label: 'B1 OFF time (05:45)' },
+    { addr: 'VW6',  type: 'word', label: 'B2 ON time (17:46)' },
+    { addr: 'VW8',  type: 'word', label: 'B2 OFF time (05:45)' },
+    { addr: 'VW10', type: 'word', label: 'Manual Remaining (s)' },
+    { addr: 'VW14', type: 'word', label: 'Manual SP (15:00m)' },
+    { addr: 'VW16', type: 'word', label: 'Force Remaining (s)' },
+    { addr: 'VW20', type: 'word', label: 'Force SP (15:00m)' },
+    { addr: 'VW22', type: 'word', label: 'HPS ON time (22:00)' },
+    { addr: 'VW24', type: 'word', label: 'HPS OFF time (04:00)' },
   ],
 };
 
@@ -813,7 +940,282 @@ document.getElementById('tabs').addEventListener('click', e => {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
   if (tab === 'chart') drawChart();
+  if (tab === 'timers') renderTimers();
+  if (tab === 'frames') startFrameStream(); else stopFrameStream();
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// TIMER ON/OFF (Weekly Timer setpoints)
+// Encoding LOGO! 8 thực tế: BCD form 0xHHMM (mỗi nibble là 1 digit thập phân).
+//   17:45 → 0x1745 = 5957   |   05:45 → 0x0545 = 1349
+//   22:00 → 0x2200 = 8704   |   04:00 → 0x0400 = 1024
+// ═══════════════════════════════════════════════════════════════════════
+const TIMER_DEFS = [
+  { id: 'B1',  label: 'T001 — Đèn nhánh 1 (Q2/K1)', onAddr: 'VW2',  offAddr: 'VW4',  statusAddr: 'Q2' },
+  { id: 'B2',  label: 'T002 — Đèn nhánh 2 (Q3/K2)', onAddr: 'VW6',  offAddr: 'VW8',  statusAddr: 'Q3' },
+  { id: 'HPS', label: 'T006 — Đèn HPS (Q4/K3)',     onAddr: 'VW22', offAddr: 'VW24', statusAddr: 'Q4' },
+];
+
+function vwToTime(vw) {
+  if (vw == null || !Number.isFinite(vw)) return { h: null, m: null, str: '--:--' };
+  const v = vw & 0xFFFF;
+  const hHi = (v >> 12) & 0xF;
+  const hLo = (v >> 8)  & 0xF;
+  const mHi = (v >> 4)  & 0xF;
+  const mLo = v & 0xF;
+  const hex = '0x' + v.toString(16).padStart(4, '0').toUpperCase();
+  if (hHi > 9 || hLo > 9 || mHi > 9 || mLo > 9) return { h: null, m: null, str: '?? ' + hex };
+  const h = hHi * 10 + hLo;
+  const m = mHi * 10 + mLo;
+  if (h > 23 || m > 59) return { h, m, str: '?? ' + hex + ' (h=' + h + ',m=' + m + ')' };
+  return { h, m, str: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') };
+}
+
+function timeToVw(hhmm) {
+  const re = /^(\d{1,2}):(\d{1,2})$/.exec(hhmm.trim());
+  if (!re) return null;
+  const h = parseInt(re[1], 10), mn = parseInt(re[2], 10);
+  if (h < 0 || h > 23 || mn < 0 || mn > 59) return null;
+  const hHi = Math.floor(h / 10), hLo = h % 10;
+  const mHi = Math.floor(mn / 10), mLo = mn % 10;
+  return (hHi << 12) | (hLo << 8) | (mHi << 4) | mLo;
+}
+
+function hmInputHtml(idPrefix, h, m) {
+  const hh = h != null ? String(h).padStart(2, '0') : '';
+  const mm = m != null ? String(m).padStart(2, '0') : '';
+  return `<div class="hm-input">
+    <input type="number" id="${idPrefix}_h" min="0" max="23" value="${hh}" placeholder="HH" inputmode="numeric">
+    <span class="sep">:</span>
+    <input type="number" id="${idPrefix}_m" min="0" max="59" value="${mm}" placeholder="MM" inputmode="numeric">
+  </div>`;
+}
+
+function readHmInput(idPrefix) {
+  const hEl = document.getElementById(idPrefix + '_h');
+  const mEl = document.getElementById(idPrefix + '_m');
+  if (!hEl || !mEl) return null;
+  if (hEl.value === '' || mEl.value === '') return null;
+  const h = parseInt(hEl.value, 10);
+  const m = parseInt(mEl.value, 10);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return { h, m, str: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') };
+}
+
+function renderTimers() {
+  const root = document.getElementById('timersList');
+  if (!root) return;
+  root.innerHTML = TIMER_DEFS.map(t => {
+    const onVw  = lastState.V[t.onAddr];
+    const offVw = lastState.V[t.offAddr];
+    const on    = vwToTime(onVw);
+    const off   = vwToTime(offVw);
+    const qOn   = !!lastState.Q[t.statusAddr];
+    const onHex  = onVw  != null ? onVw.toString(16).padStart(4,'0').toUpperCase()  : '----';
+    const offHex = offVw != null ? offVw.toString(16).padStart(4,'0').toUpperCase() : '----';
+    return `<div class="timer-card">
+      <h4>${escapeHtml(t.label)}</h4>
+      <div class="meta">
+        ${t.onAddr}=${onVw ?? '—'} (0x${onHex}) ·
+        ${t.offAddr}=${offVw ?? '—'} (0x${offHex}) ·
+        ${t.statusAddr}: <b style="color:${qOn ? 'var(--green)' : 'var(--muted)'}">${qOn ? 'ĐANG BẬT' : 'tắt'}</b>
+      </div>
+      <div class="timer-row on">
+        <div class="ticon">▶</div>
+        <div class="tlabel">Giờ BẬT (${t.onAddr})<b>${on.str}</b></div>
+        ${hmInputHtml('tin_' + t.id + '_on', on.h, on.m)}
+        <button class="btn btn-primary" onclick="saveTimerTime('${t.onAddr}', 'tin_${t.id}_on', '▶ Giờ BẬT ${t.id}')">💾 Lưu</button>
+      </div>
+      <div class="timer-row off">
+        <div class="ticon">⏹</div>
+        <div class="tlabel">Giờ TẮT (${t.offAddr})<b>${off.str}</b></div>
+        ${hmInputHtml('tin_' + t.id + '_off', off.h, off.m)}
+        <button class="btn btn-primary" onclick="saveTimerTime('${t.offAddr}', 'tin_${t.id}_off', '⏹ Giờ TẮT ${t.id}')">💾 Lưu</button>
+      </div>
+      <div class="timer-bulk">
+        <button class="btn btn-outline" onclick="saveTimerPair('${t.id}', '${t.onAddr}', '${t.offAddr}')">💾💾 Lưu cả ON + OFF</button>
+        <button class="btn btn-ghost" onclick="reloadTimerFields('${t.id}', '${t.onAddr}', '${t.offAddr}')">↻ Đọc lại từ PLC</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveTimerTime(addr, inputId, label) {
+  const hm = readHmInput(inputId);
+  if (!hm) { showToast('⚠️ Giờ không hợp lệ (HH 0-23, MM 0-59)'); return; }
+  const vw = timeToVw(hm.str);
+  if (vw == null) { showToast('⚠️ Giờ không hợp lệ'); return; }
+  try {
+    await adapter().writeNum(addr, vw);
+    lastState.V[addr] = vw;
+    showToast(`✅ ${label} → ${hm.str} (${addr}=0x${vw.toString(16).padStart(4,'0').toUpperCase()})`);
+    if (currentTab === 'timers') renderTimers();
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+async function saveTimerPair(id, onAddr, offAddr) {
+  const onHm  = readHmInput('tin_' + id + '_on');
+  const offHm = readHmInput('tin_' + id + '_off');
+  if (!onHm || !offHm) { showToast('⚠️ Giờ không hợp lệ'); return; }
+  const onVw  = timeToVw(onHm.str);
+  const offVw = timeToVw(offHm.str);
+  try {
+    await adapter().writeNum(onAddr,  onVw);
+    await adapter().writeNum(offAddr, offVw);
+    lastState.V[onAddr]  = onVw;
+    lastState.V[offAddr] = offVw;
+    showToast(`✅ ${id}: ON ${onHm.str} / OFF ${offHm.str}`);
+    renderTimers();
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+async function reloadTimerFields(id, onAddr, offAddr) {
+  try {
+    const onVw  = await adapter().readNum(onAddr);
+    const offVw = await adapter().readNum(offAddr);
+    lastState.V[onAddr]  = onVw;
+    lastState.V[offAddr] = offVw;
+    renderTimers();
+    showToast(`↻ ${id}: ${vwToTime(onVw).str} / ${vwToTime(offVw).str}`);
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// FRAME LOG — poll /frames của proxy và render TX/RX
+// ═══════════════════════════════════════════════════════════════════════
+const FRAME_UI_MAX = 300;            // số dòng tối đa giữ trong DOM
+let frameLastSeq = 0;
+let frameTotal = 0;
+let framePaused = false;
+let frameTimer = null;
+let frameRows = [];                  // mirror DOM để export CSV/copy
+
+function startFrameStream() {
+  if (frameTimer) return;
+  pollFramesOnce();
+  frameTimer = setInterval(pollFramesOnce, 500);
+}
+function stopFrameStream() {
+  if (frameTimer) clearInterval(frameTimer);
+  frameTimer = null;
+}
+
+async function pollFramesOnce() {
+  if (framePaused) return;
+  if (config.mode !== 'modbus-proxy') {
+    setFrameStat('—', 'Chỉ khả dụng ở chế độ Modbus Proxy');
+    return;
+  }
+  try {
+    const res = await fetch(config.proxyUrl + '/frames?since=' + frameLastSeq, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.lastSeq < frameLastSeq) {
+      // proxy đã clear hoặc restart → reset
+      frameLastSeq = 0;
+      frameRows = [];
+      const log = document.getElementById('frameLog');
+      if (log) log.innerHTML = '<div class="empty">Proxy vừa reset — đợi frame mới...</div>';
+    }
+    frameLastSeq = data.lastSeq;
+    frameTotal   = data.total;
+    if (data.frames && data.frames.length) appendFrames(data.frames);
+    document.getElementById('frameLastErr').textContent = '—';
+    document.getElementById('frameCount').textContent = data.lastSeq;
+  } catch (e) {
+    document.getElementById('frameLastErr').textContent = e.message.slice(0, 30);
+  }
+}
+
+function appendFrames(list) {
+  const log = document.getElementById('frameLog');
+  if (!log) return;
+  if (log.querySelector('.empty')) log.innerHTML = '';
+
+  const frag = document.createDocumentFragment();
+  for (const f of list) {
+    const row = document.createElement('div');
+    row.className = 'row ' + (f.dir === 'TX' ? 'tx' : 'rx');
+    const ts = new Date(f.ts);
+    const tsStr = ts.toTimeString().slice(0, 8) + '.' + String(ts.getMilliseconds()).padStart(3, '0');
+    row.innerHTML =
+      `<span class="ts">${tsStr}</span>` +
+      `<span class="tag">${f.dir}</span>` +
+      `<span class="body"><span class="hex">${f.hex}</span>` +
+        `<span class="ann">[${f.fcName || 'FC?'}${f.detail ? ' ' + escapeHtml(f.detail) : ''}]</span></span>`;
+    frag.appendChild(row);
+    frameRows.push({ ts: tsStr, dir: f.dir, hex: f.hex, fc: f.fcName, detail: f.detail });
+  }
+  log.appendChild(frag);
+
+  // cap DOM size
+  while (log.childElementCount > FRAME_UI_MAX) log.firstElementChild.remove();
+  while (frameRows.length > FRAME_UI_MAX) frameRows.shift();
+
+  // auto-scroll xuống cuối nếu user đang ở gần đáy
+  const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  if (nearBottom) log.scrollTop = log.scrollHeight;
+
+  document.getElementById('frameShownCount').textContent = log.childElementCount;
+}
+
+function setFrameStat(count, err) {
+  document.getElementById('frameCount').textContent = count;
+  document.getElementById('frameLastErr').textContent = err || '—';
+}
+
+function toggleFrameCapture() {
+  framePaused = !framePaused;
+  document.getElementById('frameToggleBtn').textContent = framePaused ? '▶ Tiếp tục' : '⏸ Tạm dừng';
+  showToast(framePaused ? '⏸ Đã tạm dừng nhận frame' : '▶ Đang nhận frame');
+}
+
+function clearFramesUI() {
+  document.getElementById('frameLog').innerHTML = '<div class="empty">Đã xóa UI. Frame mới sẽ tiếp tục xuất hiện.</div>';
+  frameRows = [];
+  document.getElementById('frameShownCount').textContent = '0';
+}
+
+async function clearFramesProxy() {
+  if (config.mode !== 'modbus-proxy') { showToast('⚠️ Chỉ khả dụng ở Modbus Proxy mode'); return; }
+  try {
+    await fetch(config.proxyUrl + '/frames/clear', { method: 'POST' });
+    frameLastSeq = 0;
+    clearFramesUI();
+    showToast('🗑 Đã xóa buffer trên proxy');
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+function copyFrames() {
+  if (!frameRows.length) { showToast('⚠️ Chưa có frame'); return; }
+  const text = frameRows.map(r => `${r.ts}  ${r.dir}  ${r.hex}  [${r.fc || 'FC?'}${r.detail ? ' ' + r.detail : ''}]`).join('\n');
+  navigator.clipboard.writeText(text).then(
+    () => showToast('📋 Đã copy ' + frameRows.length + ' frame'),
+    () => showToast('❌ Trình duyệt chặn clipboard')
+  );
+}
+
+function exportFramesCSV() {
+  if (!frameRows.length) { showToast('⚠️ Chưa có frame'); return; }
+  const header = 'time,dir,hex,fc,detail\n';
+  const rows = frameRows.map(r => [r.ts, r.dir, r.hex, r.fc || '', (r.detail || '').replace(/,/g, ';')].map(s => `"${s}"`).join(','));
+  const csv = header + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'modbus-frames-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // RENDER: OUTPUT GRID (Q toggles)
@@ -923,17 +1325,42 @@ async function pingLan() {
   renderLanInfo();
 }
 
+// Vùng bit GHI được qua Modbus: NI, NQ, Q, M, và V-bit (V<n>.<m>).
+// I/AI là chân vật lý → chỉ đọc (Modbus FC 02/04 không có FC ghi tương ứng).
+function isWritableBit(addr) {
+  return /^(NI|NQ|Q|M)\d+$/i.test(addr) || /^V\d+\.[0-7]$/i.test(addr);
+}
+
 function renderIoGroup(elId, list, area) {
   const el = document.getElementById(elId);
   if (!list.length) { el.innerHTML = '<div class="empty">Chưa có địa chỉ nào</div>'; return; }
   el.innerHTML = list.map(item => {
     const on = !!lastState[area][item.addr];
-    return `<div class="io-cell ${on ? 'on' : 'off'}">
+    const writable = isWritableBit(item.addr);
+    const cls = `io-cell ${on ? 'on' : 'off'}${writable ? ' tap' : ''}`;
+    const tip = writable ? ` title="Bấm để ${on ? 'tắt' : 'bật'} ${item.addr}"` : ` title="${item.addr} chỉ đọc (chân vật lý)"`;
+    const onclick = writable ? ` onclick="actuateBit('${item.addr}', '${area}', this)"` : '';
+    return `<div class="${cls}"${tip}${onclick}>
       <div class="io-addr">${item.addr}</div>
       <div class="io-led"></div>
       <div class="io-name">${escapeHtml(item.label || '')}</div>
     </div>`;
   }).join('');
+}
+
+// Tác động bit ghi được (NI/NQ/Q/M) — toggle ON/OFF qua adapter hiện tại.
+async function actuateBit(addr, area, cellEl) {
+  if (cellEl) cellEl.classList.add('busy');
+  const newVal = !lastState[area][addr];
+  try {
+    await adapter().writeBit(addr, newVal);
+    lastState[area][addr] = newVal;
+    renderStatus();
+    showToast(`${addr} → ${newVal ? 'ON' : 'OFF'}`);
+  } catch (e) {
+    showToast('❌ ' + addr + ': ' + e.message);
+    if (cellEl) cellEl.classList.remove('busy');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1108,6 +1535,7 @@ async function pollOnce() {
   if (currentTab === 'output') renderOutputs();
   else if (currentTab === 'status') renderStatus();
   else if (currentTab === 'vars') renderVars();
+  else if (currentTab === 'timers') renderTimers();
   else if (currentTab === 'chart') drawChart();
 }
 

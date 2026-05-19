@@ -1,0 +1,16 @@
+{
+  "name": "plc-logo-local-proxy",
+  "version": "1.0.0",
+  "description": "HTTP→Modbus TCP proxy cho LOGO! 8 — dùng cùng với plc.html",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.18"
+  },
+  "license": "MIT"
+}
