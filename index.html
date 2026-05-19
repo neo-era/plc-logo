@@ -363,10 +363,16 @@
       </div>
     </div>
 
-    <!-- ── ĐỒNG HỒ + GHI RTC PLC TRỰC TIẾP ── -->
+    <!-- ── ĐỒNG HỒ RTC PLC (CHỈ ĐỌC) ── -->
     <div class="card">
-      <h3>🕐 Đồng hồ PLC (đọc/ghi trực tiếp VB985-990)</h3>
-      <div class="card-sub">LOGO! 8 reserved 6 byte VM cho RTC: <code>VB985=Year</code>, <code>VB986=Month</code>, <code>VB987=Day</code>, <code>VB988=Hour</code>, <code>VB989=Minute</code>, <code>VB990=Second</code>. Proxy đọc/ghi trực tiếp qua Modbus.</div>
+      <h3>🕐 Đồng hồ PLC (read-only)</h3>
+      <div class="card-sub">
+        Đọc 6 byte VM <code>VB985-VB990</code> (Year/Month/Day/Hour/Minute/Second).
+      </div>
+
+      <div class="banner banner-warn" style="margin-bottom:10px">
+        ⚠️ <div><b>KHÔNG được write RTC qua Modbus</b>. Mặc dù docs Siemens ghi VB985-990 là "Reserved for RTC", trong firmware 0BA8 thực tế: write vào HR 492-495 khiến LOGO! reboot, <b>3 write liên tiếp = XÓA chương trình PLC</b>. Để set RTC, dùng <b>Soft Comfort → Tools → Set Clock</b>.</div>
+      </div>
 
       <div class="clock-pair">
         <div class="clock-cell pc">
@@ -375,7 +381,7 @@
           <div class="clock-date mono" id="timePcDate">—</div>
         </div>
         <div class="clock-cell plc" id="clockPlcCell">
-          <div class="clock-label">🏭 Giờ PLC RTC (VB985-990)</div>
+          <div class="clock-label">🏭 Giờ PLC RTC (read-only)</div>
           <div class="clock-time mono" id="timePlcNow">—</div>
           <div class="clock-date mono" id="timePlcDate">—</div>
           <div class="clock-badge" id="timePlcBadge">đang đọc...</div>
@@ -383,7 +389,6 @@
       </div>
 
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="syncPlcRtcNow()">💾 Ghi giờ PC xuống RTC PLC ngay</button>
         <button class="btn btn-outline" onclick="readPlcRtc(true)">↻ Đọc lại RTC PLC</button>
       </div>
 
@@ -392,6 +397,65 @@
           <div class="time-key">Múi giờ PC</div>
           <div class="time-val mono" id="timeTz">—</div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── 🧪 SET CLOCK (giống Soft Comfort dialog) ── -->
+    <div class="card" style="border:2px solid var(--orange); background:#fff7ed">
+      <h3 style="color:var(--orange)">🕐 Set Clock (FC06 RMW 5 byte VB985-989)</h3>
+      <div class="card-sub">
+        Clone giao diện Soft Comfort → Tools → Set Clock. Apply gửi 5 lệnh FC06 RMW tuần tự (Year/Month/Day/Hour/Minute), delay 200ms/lần. <b>An toàn (đã verify FC06 single không crash) nhưng có thể PLC ghi đè giá trị system sau write.</b>
+      </div>
+
+      <div class="banner banner-warn" style="margin:10px 0">
+        ⚠️ <div>Yêu cầu backup .lld + pause polling. Cooldown 60s giữa các lần Apply.</div>
+      </div>
+
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:10px 0;cursor:pointer">
+        <input type="checkbox" id="labBackupConfirm" onchange="updateLabState()" style="width:18px;height:18px">
+        <span>Tôi đã <b>backup chương trình</b> sang file .lld</span>
+      </label>
+
+      <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-outline" id="labPauseBtn" onclick="toggleLabPausePolling()">⏸ Pause polling</button>
+        <span id="labPollStatus" style="font-size:12px;color:var(--muted)">polling: <b>running</b></span>
+      </div>
+
+      <!-- Soft-Comfort-style form: Day / Month / Year | Hours / Minute -->
+      <div style="background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:10px">
+        <div style="font-weight:700;margin-bottom:10px;font-size:13px">Date and time</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px">
+          <label style="font-size:12px">Day:<input type="number" id="scDay"   min="1" max="31" value="1"   style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
+          <label style="font-size:12px">Month:<input type="number" id="scMonth" min="1" max="12" value="1"  style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
+          <label style="font-size:12px">Year:<input type="number" id="scYear"  min="2000" max="2099" value="2026" style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px">
+          <label style="font-size:12px">Hours:<input type="number" id="scHour"   min="0" max="23" value="0" style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
+          <label style="font-size:12px">Minute:<input type="number" id="scMinute" min="0" max="59" value="0" style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="scReadFromPc()">⌨️ Read from PC</button>
+          <button class="btn btn-outline" onclick="scReadFromLogo()">🏭 Read from LOGO!</button>
+          <button class="btn btn-danger" id="scApplyBtn" disabled onclick="scApplyToLogo()">💾 Apply to LOGO!</button>
+        </div>
+      </div>
+
+      <div id="labResult" style="margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap"></div>
+
+      <!-- ── 🔥 DESTRUCTIVE FC16 TEST (đã wipe 2 lần) ── -->
+      <div style="margin-top:16px;padding:12px;border:2px dashed var(--red);background:#fef2f2;border-radius:8px">
+        <div style="font-weight:800;color:var(--red);margin-bottom:6px">🔥 FC16 test — frame AI hướng dẫn (ĐÃ WIPE 2 LẦN)</div>
+        <div style="font-size:12px;margin-bottom:10px">
+          Reproduce frame <code>00 01 00 00 00 0D 01 10 01 EC 00 04 08 ...</code> FC16 write 4 registers HR 492-495.
+          Đã verify wipe program 2 lần. Cooldown 5 phút giữa lần click. Cần typed confirmation.
+        </div>
+        <label style="display:block;font-size:12px;margin-bottom:6px">
+          Gõ chính xác <code>I-UNDERSTAND-WIPE-RISK</code> để unlock:
+          <input type="text" id="fc16ConfirmInput" placeholder="(empty)" oninput="updateFc16Btn()" style="display:block;width:100%;margin-top:4px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace">
+        </label>
+        <button class="btn btn-danger" id="fc16TestBtn" disabled onclick="labTestFc16Destructive()" style="background:#991b1b">
+          🔥 SEND FC16 FRAME (RISK WIPE)
+        </button>
       </div>
     </div>
   </section>
@@ -1067,32 +1131,287 @@ async function readPlcRtc(verbose) {
   }
 }
 
-// Ghi giờ PC xuống VB985..VB990 qua endpoint /rtc (atomic FC 03 + FC 16).
-async function syncPlcRtcNow() {
+// ⚠️ Hàm syncPlcRtcNow cũ ĐÃ GỠ. Dưới là LAB TEST mode (FC06 single register).
+function syncPlcRtcNow() {
+  showToast('⚠️ Chức năng cũ đã gỡ. Dùng panel "🧪 LAB TEST" với safety controls.');
+}
+
+// ── LAB TEST: experimental FC06 RTC write với rate limit + safety ──
+let labPollPaused = false;
+
+function updateLabState() {
+  const backedUp = document.getElementById('labBackupConfirm').checked;
+  const enable = backedUp && labPollPaused;
+  const b = document.getElementById('scApplyBtn');
+  if (b) b.disabled = !enable;
+  if (typeof updateFc16Btn === 'function') updateFc16Btn();
+}
+
+function toggleLabPausePolling() {
+  if (labPollPaused) {
+    labPollPaused = false;
+    restartPolling();
+    document.getElementById('labPauseBtn').textContent = '⏸ Pause polling';
+    document.getElementById('labPollStatus').innerHTML = 'polling: <b>running</b>';
+  } else {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    labPollPaused = true;
+    document.getElementById('labPauseBtn').textContent = '▶ Resume polling';
+    document.getElementById('labPollStatus').innerHTML = 'polling: <b style="color:var(--orange)">PAUSED</b>';
+  }
+  updateLabState();
+}
+
+// ── Set Clock dialog (giống Soft Comfort) — read/apply qua FC03/FC06 ──
+function scReadFromPc() {
+  const d = new Date();
+  document.getElementById('scDay').value    = d.getDate();
+  document.getElementById('scMonth').value  = d.getMonth() + 1;
+  document.getElementById('scYear').value   = d.getFullYear();
+  document.getElementById('scHour').value   = d.getHours();
+  document.getElementById('scMinute').value = d.getMinutes();
+  showToast('⌨️ Đã đọc PC time');
+}
+
+async function scReadFromLogo() {
   if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
-  const now = new Date();
-  const payload = {
-    year:   now.getFullYear() % 100,
-    month:  now.getMonth() + 1,
-    day:    now.getDate(),
-    hour:   now.getHours(),
-    minute: now.getMinutes(),
-    second: now.getSeconds(),
-  };
   try {
-    const res = await fetch(config.proxyUrl + '/rtc', {
+    const r = await fetch(config.proxyUrl + '/rtc').then(r => r.json());
+    document.getElementById('scYear').value   = 2000 + (r.year | 0);
+    document.getElementById('scMonth').value  = r.month  | 0;
+    document.getElementById('scDay').value    = r.day    | 0;
+    document.getElementById('scHour').value   = r.hour   | 0;
+    document.getElementById('scMinute').value = r.minute | 0;
+    showToast(`🏭 LOGO!: 20${String(r.year).padStart(2,'0')}-${r.month}-${r.day} ${r.hour}:${r.minute}:${r.second}`);
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+async function scApplyToLogo() {
+  if (!document.getElementById('labBackupConfirm').checked) { showToast('⚠️ Tick backup confirm'); return; }
+  if (!labPollPaused) { showToast('⚠️ Pause polling trước'); return; }
+  if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
+
+  const year   = parseInt(document.getElementById('scYear').value);
+  const month  = parseInt(document.getElementById('scMonth').value);
+  const day    = parseInt(document.getElementById('scDay').value);
+  const hour   = parseInt(document.getElementById('scHour').value);
+  const minute = parseInt(document.getElementById('scMinute').value);
+  if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) {
+    showToast('⚠️ Giá trị không hợp lệ'); return;
+  }
+  const payload = { year: year - 2000, month, day, hour, minute };
+
+  if (!confirm(`Apply to LOGO!?\n\n${day}/${month}/${year}  ${hour}:${String(minute).padStart(2,'0')}\n\n` +
+               `Sẽ gửi 5 lệnh FC06 RMW tuần tự xuống VB985-989.\n\n` +
+               `OK để gửi, Cancel hủy.`)) return;
+
+  const resultEl = document.getElementById('labResult');
+  resultEl.textContent = '⏳ Đang gửi 5 FC06 RMW writes...';
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch(config.proxyUrl + '/set-clock', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Confirm-Backup': 'yes' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error('proxy ' + res.status + ': ' + txt.slice(0, 80));
-    }
-    showToast(`✅ Đã ghi RTC: ${fmtTime(now)} ${fmtDate(now)}`);
-    await readPlcRtc(false);
+    const txt = await res.text();
+    let j; try { j = JSON.parse(txt); } catch { j = { error: txt }; }
+    if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    const elapsed = Date.now() - t0;
+
+    const before = j.before, after = j.after;
+    const lines = [
+      `✓ Write success (${elapsed}ms)`,
+      ``,
+      `Wrote sequence (FC06 RMW):`,
+      ...j.writes.map(w => `  VB${w.vb}=${w.value}  HR${w.hr}: ${w.before} → ${w.after}`),
+      ``,
+      `Compare BEFORE → AFTER:`,
+      `  Year   (VB985):  ${before.VB985}  →  ${after.VB985}  ${after.VB985 === payload.year   ? '✓' : '✗ LOGO! overwrote'}`,
+      `  Month  (VB986):  ${before.VB986}  →  ${after.VB986}  ${after.VB986 === payload.month  ? '✓' : '✗ LOGO! overwrote'}`,
+      `  Day    (VB987):  ${before.VB987}  →  ${after.VB987}  ${after.VB987 === payload.day    ? '✓' : '✗ LOGO! overwrote'}`,
+      `  Hour   (VB988):  ${before.VB988}  →  ${after.VB988}  ${after.VB988 === payload.hour   ? '✓' : '✗ LOGO! overwrote'}`,
+      `  Minute (VB989):  ${before.VB989}  →  ${after.VB989}  ${after.VB989 === payload.minute ? '✓' : '✗ LOGO! overwrote'}`,
+      `  Second (VB990):  ${before.VB990}  →  ${after.VB990}  (không write — chỉ readback)`,
+      ``,
+      `Diagnostic (VB984): ${before.VB984} → ${after.VB984}`,
+      ``,
+      `⏳ Verify PLC alive sau 3s...`,
+    ];
+    resultEl.textContent = lines.join('\n');
+
+    setTimeout(async () => {
+      try {
+        const h = await fetch(config.proxyUrl + '/health').then(r => r.json());
+        if (h.plcConnected) {
+          resultEl.textContent += `\n\n🎉 PLC VẪN ALIVE. Mở Soft Comfort online view xem LOGO! display có đổi date/time không?`;
+        } else {
+          resultEl.textContent += `\n\n💀 PLC mất kết nối.`;
+        }
+      } catch (e) {
+        resultEl.textContent += `\n\n⚠️ /health err: ${e.message}`;
+      }
+    }, 3000);
   } catch (e) {
-    showToast('❌ Lỗi ghi RTC: ' + e.message);
+    resultEl.textContent = '✗ FAIL: ' + e.message;
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ── 🔥 FC16 destructive test (reproduce frame AI hướng dẫn) ──
+function updateFc16Btn() {
+  const input = document.getElementById('fc16ConfirmInput');
+  const btn = document.getElementById('fc16TestBtn');
+  const backedUp = document.getElementById('labBackupConfirm').checked;
+  if (btn) btn.disabled = !(input.value.trim() === 'I-UNDERSTAND-WIPE-RISK' && backedUp && labPollPaused);
+}
+
+async function labTestFc16Destructive() {
+  const input = document.getElementById('fc16ConfirmInput');
+  if (input.value.trim() !== 'I-UNDERSTAND-WIPE-RISK') {
+    showToast('⚠️ Phải gõ I-UNDERSTAND-WIPE-RISK trước'); return;
+  }
+  if (!document.getElementById('labBackupConfirm').checked) { showToast('⚠️ Tick backup confirm'); return; }
+  if (!labPollPaused) { showToast('⚠️ Pause polling'); return; }
+
+  const now = new Date();
+  const payload = {
+    year: now.getFullYear() % 100,
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+    hour: now.getHours(),
+    minute: now.getMinutes(),
+    second: now.getSeconds(),
+    confirmToken: 'I-UNDERSTAND-WIPE-RISK',
+  };
+
+  if (!confirm(`🔥 FRAME NÀY ĐÃ WIPE PROGRAM 2 LẦN. Chắc gửi?\n\n` +
+               `FC16 → HR 492-495 (Y=${payload.year} M=${payload.month} D=${payload.day} H=${payload.hour}:${payload.minute}:${payload.second})\n\n` +
+               `OK = gửi  |  Cancel = hủy`)) return;
+
+  const resultEl = document.getElementById('labResult');
+  resultEl.textContent = '🔥 Sending destructive FC16 frame...\n';
+
+  try {
+    const res = await fetch(config.proxyUrl + '/test-fc16-rtc-DESTRUCTIVE', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Confirm-Backup': 'yes',
+        'X-Confirm-Destructive': 'WIPE-RISK',
+      },
+      body: JSON.stringify(payload),
+    });
+    const txt = await res.text();
+    let j; try { j = JSON.parse(txt); } catch { j = { error: txt }; }
+    if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+
+    resultEl.textContent += `✓ Write returned (chưa biết PLC có reboot không)\n`;
+    resultEl.textContent += `  Wrote registers: ${j.written.join(' ')}\n`;
+    resultEl.textContent += `⏳ Đợi 5s rồi check PLC...\n`;
+
+    // Clear input để không click lại nhầm
+    input.value = '';
+    updateFc16Btn();
+
+    setTimeout(async () => {
+      try {
+        const h = await fetch(config.proxyUrl + '/health').then(r => r.json());
+        if (h.plcConnected) {
+          resultEl.textContent += `\n🎉 PLC vẫn alive!\n→ Kiểm tra LOGO! display: date/time có đổi không?\n→ Nếu YES → frame này thực sự set RTC.\n→ Nếu NO → vẫn vô tác dụng dù không crash.`;
+        } else {
+          resultEl.textContent += `\n💀 PLC mất kết nối — đã reboot/wipe.\n→ Mở Soft Comfort, re-transfer .lld backup.\n→ COOLDOWN 5 PHÚT, KHÔNG CLICK THÊM.`;
+        }
+      } catch (e) {
+        resultEl.textContent += `\n⚠️ /health err: ${e.message} — có thể PLC đang reboot.`;
+      }
+    }, 5000);
+  } catch (e) {
+    resultEl.textContent += `\n✗ FAIL: ${e.message}`;
+    showToast('❌ ' + e.message);
+  }
+}
+
+// ── Test FC06 write 1 VB byte (cũ, giữ lại để gọi từ console nếu cần) ──
+async function labTestVbWrite(vb, label) {
+  if (!document.getElementById('labBackupConfirm').checked) { showToast('⚠️ Tick xác nhận backup trước'); return; }
+  if (!labPollPaused) { showToast('⚠️ Pause polling trước'); return; }
+  if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
+
+  const now = new Date();
+  let value;
+  let labelDetail;
+  if (vb === 984) {
+    // No-op: read current VB984 (Diagnostic) và write lại same value. Test xem
+    // đụng vào diagnostic byte có wipe không, ngay cả khi không thay đổi giá trị.
+    try {
+      const v = await fetch(config.proxyUrl + '/read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addr: 'VB984' }),
+      }).then(r => r.json());
+      value = v.value | 0;
+      labelDetail = `Diagnostic = ${value} (no-op, write lại same value)`;
+    } catch {
+      showToast('Không đọc được VB984 hiện tại');
+      return;
+    }
+  } else if (vb === 985) { value = now.getFullYear() % 100; labelDetail = `Year = ${value} (→ 20${String(value).padStart(2,'0')})`; }
+  else if (vb === 986)   { value = now.getMonth() + 1;       labelDetail = `Month = ${value}`; }
+  else if (vb === 987)   { value = now.getDate();            labelDetail = `Day = ${value}`; }
+  else if (vb === 988)   { value = now.getHours();           labelDetail = `Hour = ${value}`; }
+  else if (vb === 989)   { value = now.getMinutes();         labelDetail = `Minute = ${value}`; }
+  else if (vb === 990)   { value = now.getSeconds();         labelDetail = `Second = ${value}`; }
+  else { showToast('VB không cho phép'); return; }
+
+  if (!confirm(`SẮP GỬI: FC06 RMW write VB${vb} = ${value} (${labelDetail})\n\n` +
+               `RỦI RO: lần này test riêng VB${vb}. Nếu wipe → backup .lld đã có?\n\n` +
+               `OK để gửi, Cancel hủy.`)) return;
+
+  const resultEl = document.getElementById('labResult');
+  resultEl.innerHTML = `<div style="color:var(--orange)">⏳ Đang gửi VB${vb} = ${value} (${label})...</div>`;
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch(config.proxyUrl + '/test-vb-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Confirm-Backup': 'yes' },
+      body: JSON.stringify({ vb, value }),
+    });
+    const txt = await res.text();
+    let j; try { j = JSON.parse(txt); } catch { j = { error: txt }; }
+    if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    const elapsed = Date.now() - t0;
+
+    const rb = j.readback;
+    resultEl.innerHTML += `<div style="color:var(--green)">✓ Write success (${elapsed}ms)</div>` +
+      `<div>  wrote VB${vb}=${value} → HR ${j.wrote.hrAddr}: ${j.wrote.regBefore} → ${j.wrote.regAfter}</div>` +
+      `<div>  readback toàn vùng RTC sau write:</div>` +
+      `<div style="padding-left:20px">VB984=${rb.VB984} VB985=${rb.VB985} (year=20${String(rb.VB985).padStart(2,'0')})</div>` +
+      `<div style="padding-left:20px">VB986=${rb.VB986} (month) VB987=${rb.VB987} (day)</div>` +
+      `<div style="padding-left:20px">VB988=${rb.VB988} (hour) VB989=${rb.VB989} (min)</div>` +
+      `<div style="padding-left:20px">VB990=${rb.VB990} (sec) VB991=${rb.VB991}</div>` +
+      `<div>  match VB${vb}: ${rb['VB'+vb] === value ? '✓ readback khớp write' : '✗ readback KHÁC ('+rb['VB'+vb]+' vs '+value+') — LOGO! ghi đè'}</div>` +
+      `<div style="margin-top:6px;color:var(--orange)">Đang verify PLC alive sau 3s...</div>`;
+
+    setTimeout(async () => {
+      try {
+        const h = await fetch(config.proxyUrl + '/health').then(r => r.json());
+        if (h.plcConnected) {
+          resultEl.innerHTML += `<div style="color:var(--green);font-weight:700">🎉 PLC VẪN ALIVE sau write VB${vb}.</div>` +
+            `<div style="color:var(--orange)">→ Kiểm tra LOGO! display: date/time có thay đổi đúng giá trị vừa write không?</div>`;
+        } else {
+          resultEl.innerHTML += `<div style="color:var(--red);font-weight:700">💀 PLC mất kết nối — VB${vb} crash PLC. STOP. Restore program.</div>`;
+        }
+      } catch (e) {
+        resultEl.innerHTML += `<div style="color:var(--red)">⚠️ /health err: ${e.message}</div>`;
+      }
+    }, 3000);
+  } catch (e) {
+    resultEl.innerHTML += `<div style="color:var(--red);font-weight:700">✗ FAIL: ${e.message}</div>`;
+    showToast('❌ ' + e.message);
   }
 }
 

@@ -189,12 +189,22 @@ async function connectModbus() {
   if (plcConnected || connecting) return;
   connecting = true;
   try {
+    // Cleanup socket cũ trước khi retry — modbus-serial không tự destroy
+    // half-open socket → tích tụ dần đến khi LOGO! hit max 8 connections.
+    try {
+      if (client._port && client._port._client) {
+        client._port._client.destroy();
+      }
+      client.close(() => {});
+    } catch {}
     await client.connectTCP(PLC_HOST, { port: PLC_PORT });
     plcConnected = true;
     attachFrameTap();
     console.log(`[modbus] ✓ kết nối ${PLC_HOST}:${PLC_PORT} (slave ${SLAVE_ID})`);
   } catch (e) {
     plcConnected = false;
+    // Đảm bảo socket bị destroy ngay cả khi connect fail.
+    try { if (client._port && client._port._client) client._port._client.destroy(); } catch {}
     console.warn(`[modbus] ✗ không kết nối được ${PLC_HOST}:${PLC_PORT} — ${e.message}. Retry sau 5s.`);
     setTimeout(connectModbus, 5000);
   } finally {
@@ -329,6 +339,14 @@ function readBody(req, limit = 64 * 1024) {
   });
 }
 
+// Rate limit state cho /test-rtc-write (đặt trước routes để TDZ không vấn đề)
+let lastTestRtcWriteTs = 0;
+const TEST_RTC_COOLDOWN_MS = 60000;  // 60 giây giữa các FC06 test write
+
+// Rate limit RIÊNG cho FC16 destructive test (5 phút — tránh 3-strike wipe)
+let lastFc16TestTs = 0;
+const FC16_TEST_COOLDOWN_MS = 300000;  // 5 phút
+
 const routes = {
   'GET /health': async () => ({
     ok: true,
@@ -401,32 +419,180 @@ const routes = {
     });
   },
 
-  // Ghi RTC PLC vào VB985..VB990 trong 1 read + 1 write transaction (FC 16).
-  // Atomic, nhanh gấp 6× so với write từng VB.
-  'POST /rtc': async (req) => {
-    const b = await readBody(req);
-    const y = (b.year   | 0) & 0xFF;
-    const M = (b.month  | 0) & 0xFF;
-    const d = (b.day    | 0) & 0xFF;
-    const h = (b.hour   | 0) & 0xFF;
-    const mn = (b.minute | 0) & 0xFF;
-    const s = (b.second | 0) & 0xFF;
-    if (M < 1 || M > 12 || d < 1 || d > 31 || h > 23 || mn > 59 || s > 59) {
-      throw new Error(`Giá trị RTC không hợp lệ: ${y}-${M}-${d} ${h}:${mn}:${s}`);
+  // Set toàn bộ RTC bằng 5 lần FC06 RMW (Year/Month/Day/Hour/Minute).
+  // Mỗi byte VB985-VB989 viết riêng qua FC03 + FC06, delay 200ms giữa các write.
+  // Đây là cách an toàn nhất đã verify: FC06 single byte không crash PLC.
+  'POST /set-clock': async (req) => {
+    const now = Date.now();
+    const sinceLast = now - lastTestRtcWriteTs;
+    if (sinceLast < TEST_RTC_COOLDOWN_MS) {
+      const wait = Math.ceil((TEST_RTC_COOLDOWN_MS - sinceLast) / 1000);
+      throw new Error(`Cooldown ${wait}s — đợi rồi thử lại.`);
     }
+    if (req.headers['x-confirm-backup'] !== 'yes') {
+      throw new Error('Header X-Confirm-Backup: yes bắt buộc');
+    }
+    const b = await readBody(req);
+    const fields = {
+      VB985: { value: b.year   | 0, label: 'Year'   },
+      VB986: { value: b.month  | 0, label: 'Month'  },
+      VB987: { value: b.day    | 0, label: 'Day'    },
+      VB988: { value: b.hour   | 0, label: 'Hour'   },
+      VB989: { value: b.minute | 0, label: 'Minute' },
+    };
+    for (const [vb, info] of Object.entries(fields)) {
+      if (info.value < 0 || info.value > 255) throw new Error(`${vb} (${info.label}) ngoài range 0-255`);
+    }
+    lastTestRtcWriteTs = now;
+    console.warn('[set-clock] FC06 RMW 5 byte:', JSON.stringify(b));
+
     return withModbus(async () => {
-      // Read HR 492..495 (cover VB984=diagnostic, VB985..VB990=RTC, VB991=unknown)
-      const r = await client.readHoldingRegisters(492, 4);
-      const cur = r.data;
-      // Modify chỉ 6 byte RTC, giữ nguyên VB984 (diagnostic) + VB991 (low byte HR 495)
+      // 1. Read HR 492-495 trước để chụp baseline
+      const before = (await client.readHoldingRegisters(492, 4)).data;
+
+      // 2. Write từng VB qua FC06 RMW. Mỗi lần đọc HR mới rồi modify byte cần thay.
+      const writes = [
+        { vb: 985, value: fields.VB985.value },
+        { vb: 986, value: fields.VB986.value },
+        { vb: 987, value: fields.VB987.value },
+        { vb: 988, value: fields.VB988.value },
+        { vb: 989, value: fields.VB989.value },
+      ];
+      const log = [];
+      for (const w of writes) {
+        const hrAddr = Math.floor(w.vb / 2);
+        const byteOffset = w.vb % 2;
+        const r = await client.readHoldingRegisters(hrAddr, 1);
+        const cur = r.data[0];
+        const next = byteOffset === 0
+          ? ((w.value & 0xFF) << 8) | (cur & 0x00FF)
+          : (cur & 0xFF00) | (w.value & 0xFF);
+        await client.writeRegister(hrAddr, next);
+        log.push({ vb: w.vb, value: w.value, hr: hrAddr,
+                   before: '0x' + cur.toString(16).padStart(4,'0').toUpperCase(),
+                   after:  '0x' + next.toString(16).padStart(4,'0').toUpperCase() });
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // 3. Readback toàn vùng RTC sau write
+      await new Promise(r => setTimeout(r, 300));
+      const after = (await client.readHoldingRegisters(492, 4)).data;
+
+      return {
+        ok: true,
+        writes: log,
+        before: {
+          VB984: (before[0] >> 8) & 0xFF, VB985: before[0] & 0xFF,
+          VB986: (before[1] >> 8) & 0xFF, VB987: before[1] & 0xFF,
+          VB988: (before[2] >> 8) & 0xFF, VB989: before[2] & 0xFF,
+          VB990: (before[3] >> 8) & 0xFF, VB991: before[3] & 0xFF,
+        },
+        after: {
+          VB984: (after[0] >> 8) & 0xFF, VB985: after[0] & 0xFF,
+          VB986: (after[1] >> 8) & 0xFF, VB987: after[1] & 0xFF,
+          VB988: (after[2] >> 8) & 0xFF, VB989: after[2] & 0xFF,
+          VB990: (after[3] >> 8) & 0xFF, VB991: after[3] & 0xFF,
+        },
+      };
+    });
+  },
+
+  // 🔥 DESTRUCTIVE FC16 test — reproduce frame mà AI hướng dẫn:
+  //   00 01 00 00 00 0D 01 10 01 EC 00 04 08 YY MM DD HH MN SS XX
+  // Đã wipe program 2 lần trong session 2026-05-19. Add lại theo yêu cầu user.
+  // Safety: 5-minute cooldown + 2 header confirm + read body confirm token.
+  'POST /test-fc16-rtc-DESTRUCTIVE': async (req) => {
+    const now = Date.now();
+    const sinceLast = now - lastFc16TestTs;
+    if (sinceLast < FC16_TEST_COOLDOWN_MS) {
+      const wait = Math.ceil((FC16_TEST_COOLDOWN_MS - sinceLast) / 1000);
+      throw new Error(`Cooldown ${wait}s — frame này wipe program 2 lần rồi.`);
+    }
+    if (req.headers['x-confirm-backup'] !== 'yes' || req.headers['x-confirm-destructive'] !== 'WIPE-RISK') {
+      throw new Error('Cần X-Confirm-Backup: yes + X-Confirm-Destructive: WIPE-RISK headers');
+    }
+    const b = await readBody(req);
+    if (b.confirmToken !== 'I-UNDERSTAND-WIPE-RISK') {
+      throw new Error('Cần confirmToken="I-UNDERSTAND-WIPE-RISK" trong body');
+    }
+    const yr = (b.year   | 0) & 0xFF;
+    const mo = (b.month  | 0) & 0xFF;
+    const dy = (b.day    | 0) & 0xFF;
+    const hr = (b.hour   | 0) & 0xFF;
+    const mn = (b.minute | 0) & 0xFF;
+    const sc = (b.second | 0) & 0xFF;
+    lastFc16TestTs = now;
+    console.warn('🔥🔥🔥 [DESTRUCTIVE FC16] Sending wipe-risk frame to HR 492-495 🔥🔥🔥');
+    console.warn(`  Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn} S=${sc}`);
+
+    return withModbus(async () => {
+      // Đọc HR 495 trước để preserve VB991 trong byte thấp của HR 495.
+      const r495before = await client.readHoldingRegisters(495, 1);
+      // Build 4 registers giống frame AI:
+      //   HR 492 = (00 << 8) | year  ← VB984 zero, VB985 year
+      //   HR 493 = (month << 8) | day
+      //   HR 494 = (hour << 8) | minute
+      //   HR 495 = (second << 8) | preserved
       const newData = [
-        (cur[0] & 0xFF00) | y,            // HR 492: VB984 (preserve) + VB985=year
-        (M << 8) | d,                      // HR 493: VB986=month + VB987=day
-        (h << 8) | mn,                     // HR 494: VB988=hour + VB989=minute
-        (s << 8) | (cur[3] & 0x00FF),      // HR 495: VB990=second + VB991 (preserve)
+        yr,                                          // HR 492: VB984=0 + VB985=year
+        (mo << 8) | dy,                              // HR 493
+        (hr << 8) | mn,                              // HR 494
+        (sc << 8) | (r495before.data[0] & 0xFF),     // HR 495: VB990=second + preserved VB991
       ];
       await client.writeRegisters(492, newData);
-      return { ok: true, written: { year: y, month: M, day: d, hour: h, minute: mn, second: s } };
+      return { ok: true, written: newData.map(x => '0x' + x.toString(16).padStart(4,'0').toUpperCase()) };
+    });
+  },
+
+  // ⚠️ EXPERIMENTAL: test FC06 write 1 VB byte trong RTC area via RMW
+  // (FC03 read + FC06 write). Rate limit + backup confirm bắt buộc.
+  'POST /test-vb-write': async (req) => {
+    const now = Date.now();
+    const sinceLast = now - lastTestRtcWriteTs;
+    if (sinceLast < TEST_RTC_COOLDOWN_MS) {
+      const wait = Math.ceil((TEST_RTC_COOLDOWN_MS - sinceLast) / 1000);
+      throw new Error(`Cooldown ${wait}s — đề phòng 3-strike wipe.`);
+    }
+    if (req.headers['x-confirm-backup'] !== 'yes') {
+      throw new Error('Header X-Confirm-Backup: yes bắt buộc');
+    }
+    const { vb, value } = await readBody(req);
+    if (!Number.isInteger(vb) || vb < 984 || vb > 990) {
+      throw new Error('vb phải là 984..990');
+    }
+    if (!Number.isInteger(value) || value < 0 || value > 255) {
+      throw new Error('value phải là 0..255');
+    }
+    lastTestRtcWriteTs = now;
+    const hrAddr = Math.floor(vb / 2);
+    const byteOffset = vb % 2;   // 0 = high byte (VB chẵn), 1 = low byte
+    console.warn(`[EXPERIMENTAL] VB${vb} = ${value} (HR ${hrAddr} ${byteOffset === 0 ? 'high' : 'low'} byte)`);
+    return withModbus(async () => {
+      // Read-modify-write
+      const r = await client.readHoldingRegisters(hrAddr, 1);
+      const cur = r.data[0];
+      const next = byteOffset === 0
+        ? ((value & 0xFF) << 8) | (cur & 0x00FF)
+        : (cur & 0xFF00) | (value & 0xFF);
+      await client.writeRegister(hrAddr, next);
+      // Readback HR 492-495 để biết toàn cảnh RTC sau write
+      await new Promise(r => setTimeout(r, 300));
+      const v = await client.readHoldingRegisters(492, 4);
+      return {
+        ok: true,
+        wrote: {
+          vb, value,
+          hrAddr,
+          regBefore: '0x' + cur.toString(16).padStart(4, '0').toUpperCase(),
+          regAfter:  '0x' + next.toString(16).padStart(4, '0').toUpperCase(),
+        },
+        readback: {
+          VB984: (v.data[0] >> 8) & 0xFF, VB985: v.data[0] & 0xFF,
+          VB986: (v.data[1] >> 8) & 0xFF, VB987: v.data[1] & 0xFF,
+          VB988: (v.data[2] >> 8) & 0xFF, VB989: v.data[2] & 0xFF,
+          VB990: (v.data[3] >> 8) & 0xFF, VB991: v.data[3] & 0xFF,
+        },
+      };
     });
   },
 };
