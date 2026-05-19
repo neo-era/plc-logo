@@ -1239,11 +1239,14 @@ async function scApplyToLogo() {
   const payload = { year: year - 2000, month, day, hour, minute };
 
   if (!confirm(`Apply to LOGO!?\n\n${day}/${month}/${year}  ${hour}:${String(minute).padStart(2,'0')}\n\n` +
-               `Sẽ gửi 5 lệnh FC06 RMW tuần tự xuống VB985-989.\n\n` +
+               `Sẽ gửi 3 frame FC06 tuần tự:\n` +
+               `  Frame 1: HR 492 ← Year\n` +
+               `  Frame 2: HR 493 ← Month+Day\n` +
+               `  Frame 3: HR 494 ← Hour+Minute\n\n` +
                `OK để gửi, Cancel hủy.`)) return;
 
   const resultEl = document.getElementById('labResult');
-  resultEl.textContent = '⏳ Đang gửi 5 FC06 RMW writes...';
+  resultEl.textContent = '⏳ Đang gửi 3 FC06 frames...';
 
   const t0 = Date.now();
   try {
@@ -1259,12 +1262,12 @@ async function scApplyToLogo() {
 
     const before = j.before, after = j.after;
     const lines = [
-      `✓ Write success (${elapsed}ms)`,
+      `✓ Write success (${elapsed}ms tổng cộng)`,
       ``,
-      `Wrote sequence (FC06 RMW):`,
-      ...j.writes.map(w => `  VB${w.vb}=${w.value}  HR${w.hr}: ${w.before} → ${w.after}`),
+      `3 frame FC06 đã gửi:`,
+      ...j.frames.map((f, i) => `  ${i+1}. ${f.label.padEnd(14)} FC06 HR ${f.addr} ← ${f.hex}  (${f.purpose}, ${f.elapsedMs}ms)`),
       ``,
-      `Compare BEFORE → AFTER:`,
+      `Compare BEFORE → AFTER readback toàn vùng RTC:`,
       `  Year   (VB985):  ${before.VB985}  →  ${after.VB985}  ${after.VB985 === payload.year   ? '✓' : '✗ LOGO! overwrote'}`,
       `  Month  (VB986):  ${before.VB986}  →  ${after.VB986}  ${after.VB986 === payload.month  ? '✓' : '✗ LOGO! overwrote'}`,
       `  Day    (VB987):  ${before.VB987}  →  ${after.VB987}  ${after.VB987 === payload.day    ? '✓' : '✗ LOGO! overwrote'}`,
@@ -1272,7 +1275,7 @@ async function scApplyToLogo() {
       `  Minute (VB989):  ${before.VB989}  →  ${after.VB989}  ${after.VB989 === payload.minute ? '✓' : '✗ LOGO! overwrote'}`,
       `  Second (VB990):  ${before.VB990}  →  ${after.VB990}  (không write — chỉ readback)`,
       ``,
-      `Diagnostic (VB984): ${before.VB984} → ${after.VB984}`,
+      `Diagnostic (VB984): ${before.VB984} → ${after.VB984}  (Frame 1 ghi 0, LOGO! refresh sau)`,
       ``,
       `⏳ Verify PLC alive sau 3s...`,
     ];

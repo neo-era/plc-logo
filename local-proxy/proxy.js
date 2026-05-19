@@ -575,9 +575,11 @@ const routes = {
     });
   },
 
-  // Set toàn bộ RTC bằng 5 lần FC06 RMW (Year/Month/Day/Hour/Minute).
-  // Mỗi byte VB985-VB989 viết riêng qua FC03 + FC06, delay 200ms giữa các write.
-  // Đây là cách an toàn nhất đã verify: FC06 single byte không crash PLC.
+  // Set RTC bằng 3 frame FC06 sequential, gửi lần lượt:
+  //   Frame 1 (Year):        FC06 → HR 492 ← (00 << 8) | year
+  //   Frame 2 (Month+Day):   FC06 → HR 493 ← (month << 8) | day
+  //   Frame 3 (Hour+Minute): FC06 → HR 494 ← (hour << 8) | minute
+  // Delay 200ms giữa các frame. Diagnostic byte (VB984) bị ghi 0, LOGO! tự refresh.
   'POST /set-clock': async (req) => {
     const now = Date.now();
     const sinceLast = now - lastTestRtcWriteTs;
@@ -589,44 +591,37 @@ const routes = {
       throw new Error('Header X-Confirm-Backup: yes bắt buộc');
     }
     const b = await readBody(req);
-    const fields = {
-      VB985: { value: b.year   | 0, label: 'Year'   },
-      VB986: { value: b.month  | 0, label: 'Month'  },
-      VB987: { value: b.day    | 0, label: 'Day'    },
-      VB988: { value: b.hour   | 0, label: 'Hour'   },
-      VB989: { value: b.minute | 0, label: 'Minute' },
-    };
-    for (const [vb, info] of Object.entries(fields)) {
-      if (info.value < 0 || info.value > 255) throw new Error(`${vb} (${info.label}) ngoài range 0-255`);
+    const yr = b.year   | 0, mo = b.month | 0, dy = b.day | 0;
+    const hr = b.hour   | 0, mn = b.minute | 0;
+    if (yr < 0 || yr > 99 || mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mn > 59) {
+      throw new Error(`Giá trị không hợp lệ: Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`);
     }
     lastTestRtcWriteTs = now;
-    console.warn('[set-clock] FC06 RMW 5 byte:', JSON.stringify(b));
+    console.warn(`[set-clock] 3 frame FC06: Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`);
 
     return withModbus(async () => {
-      // 1. Read HR 492-495 trước để chụp baseline
+      // Baseline đọc trước khi ghi
       const before = (await client.readHoldingRegisters(492, 4)).data;
 
-      // 2. Write từng VB qua FC06 RMW. Mỗi lần đọc HR mới rồi modify byte cần thay.
-      const writes = [
-        { vb: 985, value: fields.VB985.value },
-        { vb: 986, value: fields.VB986.value },
-        { vb: 987, value: fields.VB987.value },
-        { vb: 988, value: fields.VB988.value },
-        { vb: 989, value: fields.VB989.value },
+      // 3 frame FC06 độc lập, gửi tuần tự
+      const frames = [
+        { addr: 492, value: (0 << 8)  | yr,       label: 'Year',         purpose: `VB984=00 + VB985=${yr}` },
+        { addr: 493, value: (mo << 8) | dy,       label: 'Month+Day',    purpose: `VB986=${mo} + VB987=${dy}` },
+        { addr: 494, value: (hr << 8) | mn,       label: 'Hour+Minute',  purpose: `VB988=${hr} + VB989=${mn}` },
       ];
       const log = [];
-      for (const w of writes) {
-        const hrAddr = Math.floor(w.vb / 2);
-        const byteOffset = w.vb % 2;
-        const r = await client.readHoldingRegisters(hrAddr, 1);
-        const cur = r.data[0];
-        const next = byteOffset === 0
-          ? ((w.value & 0xFF) << 8) | (cur & 0x00FF)
-          : (cur & 0xFF00) | (w.value & 0xFF);
-        await client.writeRegister(hrAddr, next);
-        log.push({ vb: w.vb, value: w.value, hr: hrAddr,
-                   before: '0x' + cur.toString(16).padStart(4,'0').toUpperCase(),
-                   after:  '0x' + next.toString(16).padStart(4,'0').toUpperCase() });
+      for (const f of frames) {
+        const t0 = Date.now();
+        await client.writeRegister(f.addr, f.value);
+        log.push({
+          fc: 6,
+          addr: f.addr,
+          value: f.value,
+          hex: '0x' + f.value.toString(16).padStart(4, '0').toUpperCase(),
+          label: f.label,
+          purpose: f.purpose,
+          elapsedMs: Date.now() - t0,
+        });
         await new Promise(r => setTimeout(r, 200));
       }
 
@@ -636,7 +631,7 @@ const routes = {
 
       return {
         ok: true,
-        writes: log,
+        frames: log,
         before: {
           VB984: (before[0] >> 8) & 0xFF, VB985: before[0] & 0xFF,
           VB986: (before[1] >> 8) & 0xFF, VB987: before[1] & 0xFF,
