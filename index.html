@@ -290,6 +290,10 @@
 
 <div class="topbar">
   <h1>⚡ Điều khiển LOGO! 230RCE</h1>
+  <button onclick="manualRefresh()" title="Đọc lại trạng thái từ PLC ngay"
+          style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">
+    ↻ Refresh
+  </button>
   <div id="conn" class="conn">
     <span class="dot"></span>
     <span id="connTxt">Chưa kết nối</span>
@@ -436,7 +440,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-outline" onclick="scReadFromPc()">⌨️ Read from PC</button>
           <button class="btn btn-outline" onclick="scReadFromLogo()">🏭 Read from LOGO!</button>
-          <button class="btn btn-danger" id="scApplyBtn" disabled onclick="scApplyToLogo()">💾 Apply to LOGO!</button>
+          <button class="btn btn-primary" id="scApplyBtn" onclick="scApplyToLogo()">💾 Apply to LOGO!</button>
         </div>
       </div>
 
@@ -1175,10 +1179,8 @@ function syncPlcRtcNow() {
 let labPollPaused = false;
 
 function updateLabState() {
-  const backedUp = document.getElementById('labBackupConfirm').checked;
-  const enable = backedUp && labPollPaused;
-  const b = document.getElementById('scApplyBtn');
-  if (b) b.disabled = !enable;
+  // scApplyBtn không còn gate — luôn enabled (FC06 safe).
+  // Backup confirm + pause polling chỉ apply cho FC16 destructive test.
   if (typeof updateFc16Btn === 'function') updateFc16Btn();
 }
 
@@ -1224,18 +1226,23 @@ async function scReadFromLogo() {
 }
 
 async function scApplyToLogo() {
-  if (!document.getElementById('labBackupConfirm').checked) { showToast('⚠️ Tick backup confirm'); return; }
-  if (!labPollPaused) { showToast('⚠️ Pause polling trước'); return; }
   if (config.mode !== 'modbus-proxy') { showToast('⚠️ Cần Modbus Proxy mode'); return; }
+  // FC06 single-register đã verify SAFE → bỏ gate backup confirm + pause polling.
+  // Phase 1 SSE architecture: proxy poll 5s (chậm) + withModbus queue serialize → an toàn.
 
-  const year   = parseInt(document.getElementById('scYear').value);
-  const month  = parseInt(document.getElementById('scMonth').value);
-  const day    = parseInt(document.getElementById('scDay').value);
-  const hour   = parseInt(document.getElementById('scHour').value);
-  const minute = parseInt(document.getElementById('scMinute').value);
-  if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) {
-    showToast('⚠️ Giá trị không hợp lệ'); return;
-  }
+  // Apply LUÔN lấy giờ PC HIỆN TẠI tại moment bấm (không dùng form value cũ).
+  // Form fields được auto-fill cho user thấy chính xác giá trị sẽ gửi.
+  const now = new Date();
+  const year   = now.getFullYear();
+  const month  = now.getMonth() + 1;
+  const day    = now.getDate();
+  const hour   = now.getHours();
+  const minute = now.getMinutes();
+  document.getElementById('scYear').value   = year;
+  document.getElementById('scMonth').value  = month;
+  document.getElementById('scDay').value    = day;
+  document.getElementById('scHour').value   = hour;
+  document.getElementById('scMinute').value = minute;
   const payload = { year: year - 2000, month, day, hour, minute };
 
   if (!confirm(`Apply to LOGO!?\n\n${day}/${month}/${year}  ${hour}:${String(minute).padStart(2,'0')}\n\n` +
@@ -1252,7 +1259,7 @@ async function scApplyToLogo() {
   try {
     const res = await fetch(config.proxyUrl + '/set-clock', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Confirm-Backup': 'yes' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const txt = await res.text();
@@ -2293,9 +2300,93 @@ async function pollOnce() {
 }
 
 function restartPolling() {
+  // Phase 1 architecture: KHÔNG poll nữa cho modbus-proxy mode.
+  // UI subscribe + nhận SSE push từ proxy. Polling chỉ còn cho demo/logo-web.
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => { pollOnce().catch(e => console.warn(e)); }, config.pollMs);
-  pollOnce().catch(()=>{});
+  pollTimer = null;
+  stopSse();
+  if (config.mode === 'modbus-proxy') {
+    startSse();   // SSE + subscribe
+  } else {
+    // demo / logo-web → vẫn poll vì 2 mode đó không có push
+    pollTimer = setInterval(() => { pollOnce().catch(e => console.warn(e)); }, config.pollMs);
+    pollOnce().catch(()=>{});
+  }
+}
+
+// ── SSE: subscribe points + nhận push từ proxy ──
+let sseSource = null;
+let sseLastEventTs = 0;
+
+function buildSubscriptionPoints() {
+  return [
+    ...config.inputs.map(it  => ({ addr: it.addr, area: 'I', type: 'bit' })),
+    ...config.outputs.map(it => ({ addr: it.addr, area: 'Q', type: 'bit' })),
+    ...config.memory.map(it  => ({ addr: it.addr, area: 'M', type: 'bit' })),
+    ...config.variables.map(it => ({ addr: it.addr, area: 'V', type: it.type })),
+  ];
+}
+
+async function startSse() {
+  stopSse();
+  if (config.mode !== 'modbus-proxy') return;
+  try {
+    // 1. Subscribe danh sách points
+    const points = buildSubscriptionPoints();
+    const subRes = await fetch(config.proxyUrl + '/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ points }),
+    });
+    if (!subRes.ok) throw new Error('Subscribe failed: ' + subRes.status);
+    const subJson = await subRes.json();
+    console.log('[sse] subscribed', subJson.count, 'points, poll', subJson.pollIntervalMs, 'ms');
+  } catch (e) {
+    setConnStatus('err', 'Subscribe FAIL: ' + e.message);
+    return;
+  }
+
+  // 2. Mở SSE stream
+  sseSource = new EventSource(config.proxyUrl + '/events');
+  sseSource.onopen = () => setConnStatus('ok', 'SSE live');
+  sseSource.onerror = () => {
+    setConnStatus('err', 'SSE disconnected — retry 5s');
+    stopSse();
+    setTimeout(() => { if (config.mode === 'modbus-proxy') startSse(); }, 5000);
+  };
+  sseSource.addEventListener('state', e => {
+    sseLastEventTs = Date.now();
+    let data; try { data = JSON.parse(e.data); } catch { return; }
+    for (const ch of data.changes) {
+      if (ch.area && ch.addr != null) {
+        lastState[ch.area][ch.addr] = (ch.type === 'bit') ? !!ch.value : ch.value;
+      }
+    }
+    lastPollAt = sseLastEventTs;
+    // Re-render tab hiện tại
+    if (currentTab === 'output') renderOutputs();
+    else if (currentTab === 'status') renderStatus();
+    else if (currentTab === 'vars') renderVars();
+    else if (currentTab === 'timers') updateTimerDisplay();
+    else if (currentTab === 'chart') drawChart();
+  });
+}
+
+function stopSse() {
+  if (sseSource) { try { sseSource.close(); } catch {} sseSource = null; }
+}
+
+// Manual refresh (gọi từ nút "↻ Đọc lại")
+async function manualRefresh() {
+  if (config.mode !== 'modbus-proxy') { pollOnce().catch(()=>{}); return; }
+  try {
+    const res = await fetch(config.proxyUrl + '/refresh', { method: 'POST' });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    showToast(`↻ Đã refresh ${j.pointsPolled} points`);
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

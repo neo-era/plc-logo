@@ -17,6 +17,8 @@
 
 const http = require('http');
 const net = require('net');
+const dgram = require('dgram');
+const os = require('os');
 const ModbusRTU = require('modbus-serial');
 
 // ── CLI ARGS ──────────────────────────────────────────────────────────
@@ -38,7 +40,7 @@ const PLC_HOST  = args['plc-host']  || process.env.PLC_HOST  || '192.168.0.3';
 const PLC_PORT  = parseInt(args['plc-port']  || process.env.PLC_PORT  || '502', 10);
 const SLAVE_ID  = parseInt(args['slave-id']  || process.env.SLAVE_ID  || '1',   10);
 const HTTP_PORT = parseInt(args['port']      || process.env.HTTP_PORT || '3001',10);
-const TIMEOUT   = parseInt(args['timeout']   || process.env.TIMEOUT   || '2000',10);
+const TIMEOUT   = parseInt(args['timeout']   || process.env.TIMEOUT   || '5000',10);
 
 // ── LOGO! ↔ MODBUS MAPPING ────────────────────────────────────────────
 // Chuẩn Siemens cho LOGO! 8 Modbus Slave.
@@ -316,7 +318,7 @@ function send(res, code, obj) {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Confirm-Backup, X-Confirm-Destructive',
     'Cache-Control': 'no-store',
   });
   res.end(body);
@@ -338,6 +340,44 @@ function readBody(req, limit = 64 * 1024) {
     });
     req.on('error', reject);
   });
+}
+
+// ── Phase 1: background poller + SSE push tới UI ──
+// UI subscribe 1 lần với list addresses → proxy poll mỗi N giây →
+// detect changes vs cache → broadcast SSE event lên mọi UI client.
+let subscribedPoints = [];   // [{ addr, type, area }]
+let lastValues = {};          // { addr: value }
+let bgPollTimer = null;
+const sseClients = new Set();
+const BG_POLL_INTERVAL_MS = 5000;  // 5s — chậm hơn polling cũ (1.5s)
+
+function broadcastSSE(eventName, data) {
+  const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(payload); } catch { sseClients.delete(res); }
+  }
+}
+
+async function backgroundPoll() {
+  if (!plcConnected || subscribedPoints.length === 0) return;
+  const changes = [];
+  for (const pt of subscribedPoints) {
+    try {
+      const v = await readAddr(pt.addr);
+      const prev = lastValues[pt.addr];
+      const norm = typeof v === 'boolean' ? v : Number(v);
+      if (prev !== norm) {
+        lastValues[pt.addr] = norm;
+        changes.push({ addr: pt.addr, value: norm, area: pt.area, type: pt.type });
+      }
+    } catch (e) { /* ignore per-point error */ }
+  }
+  if (changes.length > 0) broadcastSSE('state', { changes, ts: Date.now() });
+}
+
+function startBgPoll() {
+  if (bgPollTimer) return;
+  bgPollTimer = setInterval(() => backgroundPoll().catch(() => {}), BG_POLL_INTERVAL_MS);
 }
 
 // Rate limit state cho /test-rtc-write (đặt trước routes để TDZ không vấn đề)
@@ -394,6 +434,144 @@ function s7BuildStart() {
     0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFD, 0x00, 0x00, 0x09, // START function
     0x50, 0x5F, 0x50, 0x52, 0x4F, 0x47, 0x52, 0x41, 0x4D, 0x00, // "P_PROGRAM\0"
   ]);
+}
+
+// S7 SetClock — set toàn bộ RTC qua UserData function 0x47.02 (BCD encoded)
+function toBcd(v) { return (((v / 10) | 0) << 4) | (v % 10); }
+
+function s7BuildSetClock(date) {
+  const yy  = date.getFullYear() % 100;
+  const cc  = (date.getFullYear() / 100) | 0;   // century byte 19, 20, 21...
+  const mo  = date.getMonth() + 1;
+  const dy  = date.getDate();
+  const hh  = date.getHours();
+  const mn  = date.getMinutes();
+  const ss  = date.getSeconds();
+  const dow = date.getDay() + 1;                 // Sunday=1 (Siemens)
+  // S7 SetClock packet (TPKT 39 bytes total)
+  return Buffer.from([
+    0x03, 0x00, 0x00, 0x27,                      // TPKT len=39
+    0x02, 0xF0, 0x80,                            // COTP DT
+    // S7 header (10 bytes): ROSCTR=07 UserData
+    0x32, 0x07, 0x00, 0x00, 0x10, 0x00,          // proto + ROSCTR + redundancy + PDU ref (0x1000)
+    0x00, 0x08, 0x00, 0x0E,                      // param len=8, data len=14
+    // Param (8 bytes): UserData header
+    0x00, 0x01, 0x12,                            // sig
+    0x04,                                        // param block length
+    0x11,                                        // method 0x11 = Request
+    0x47,                                        // function 0x47 = TIME functions
+    0x02,                                        // subfunc 0x02 = SetClock
+    0x00,                                        // sequence
+    // Data (14 bytes)
+    0xFF, 0x09, 0x00, 0x0A,                      // return code=0xFF, var type=09 octet string, length=10
+    0x00,                                        // reserved
+    toBcd(cc), toBcd(yy),                        // BCD century + year (2 bytes)
+    toBcd(mo), toBcd(dy),                        // BCD month + day
+    toBcd(hh), toBcd(mn),                        // BCD hour + minute
+    toBcd(ss), 0x00,                             // BCD second + hundredths (00)
+    toBcd(dow),                                  // BCD day-of-week (1=Sun..7=Sat)
+  ]);
+}
+
+async function s7SetClock(date) {
+  // Disconnect modbus-serial trước, kiểu y như STOP/START
+  plcConnected = false;
+  try {
+    if (client._port && client._port._client) client._port._client.destroy();
+    client.close(() => {});
+  } catch {}
+  await new Promise(r => setTimeout(r, 300));
+
+  let result;
+  try {
+    result = await s7SetClockExchange(date);
+  } finally {
+    setTimeout(() => { if (!plcConnected) connectModbus().catch(() => {}); }, 500);
+  }
+  return result;
+}
+
+function s7SetClockExchange(date) {
+  return new Promise((resolve, reject) => {
+    const sock = new net.Socket();
+    sock.setNoDelay(true);
+    let received = Buffer.alloc(0);
+    let phase = 'CR';
+    let settled = false;
+    const logs = [];
+
+    const finish = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { sock.destroy(); } catch {}
+      fn(val);
+    };
+    const timeout = setTimeout(() => finish(reject, new Error(`S7 SetClock timeout in phase ${phase}`)), 5000);
+
+    function parsePdu(buf) {
+      if (buf.length < 4) return null;
+      const len = buf.readUInt16BE(2);
+      if (buf.length < len) return null;
+      return { pdu: buf.slice(0, len), rest: buf.slice(len) };
+    }
+
+    sock.on('data', chunk => {
+      received = Buffer.concat([received, chunk]);
+      while (true) {
+        const r = parsePdu(received);
+        if (!r) break;
+        received = r.rest;
+        logs.push(`RX[${phase}] ${r.pdu.length}B`);
+
+        if (phase === 'CR') {
+          const cotp = r.pdu[5];
+          if ((cotp & 0xF0) !== 0xD0) return finish(reject, new Error('S7 CR rejected'));
+          phase = 'SETUP';
+          const setup = s7BuildSetupComm();
+          logs.push(`TX[SETUP] ${setup.length}B`);
+          sock.write(setup);
+        } else if (phase === 'SETUP') {
+          phase = 'SET_CLOCK';
+          const cmd = s7BuildSetClock(date);
+          logs.push(`TX[SET_CLOCK] ${cmd.length}B  ${cmd.toString('hex').toUpperCase()}`);
+          sock.write(cmd);
+        } else if (phase === 'SET_CLOCK') {
+          phase = 'DONE';
+          // S7 ack_data response: parse return code in UserData
+          // Bytes: TPKT(4) COTP(3) S7Hdr(12 for ack_data) Param(12) Data(...)
+          // For SetClock response, look at byte 17-18 for err class/code, or
+          // look at data return code (byte ~31).
+          let errClass = null, errCode = null, dataRetCode = null;
+          if (r.pdu.length >= 19) { errClass = r.pdu[17]; errCode = r.pdu[18]; }
+          // For UserData ack, data starts after param (which is 12 bytes after header)
+          // S7 ack_data header is 12 bytes: 32 03 00 00 PP PP PL PL DL DL EC EC
+          // Then param 12 bytes, then data N bytes
+          if (r.pdu.length >= 32) dataRetCode = r.pdu[31];
+          finish(resolve, {
+            ok: (errClass === 0 || errClass === null) && (dataRetCode === 0xFF || dataRetCode === null),
+            errClass, errCode, dataRetCode,
+            response: r.pdu.toString('hex').toUpperCase().match(/.{2}/g).join(' '),
+            sent: {
+              year: date.getFullYear(), month: date.getMonth()+1, day: date.getDate(),
+              hour: date.getHours(), minute: date.getMinutes(), second: date.getSeconds(),
+              dow: date.getDay() + 1,
+            },
+            logs,
+          });
+        }
+      }
+    });
+
+    sock.on('error', err => finish(reject, new Error('S7 socket: ' + err.message)));
+    sock.on('close', () => { if (!settled) finish(reject, new Error(`S7 closed in phase ${phase}`)); });
+
+    sock.connect(S7_PORT, PLC_HOST, () => {
+      const cr = s7BuildConnRequest();
+      logs.push(`TX[CR] ${cr.length}B`);
+      sock.write(cr);
+    });
+  });
 }
 
 async function s7StopStart(action) {
@@ -553,11 +731,40 @@ const routes = {
     return { ok: true };
   },
 
+  // UI subscribe danh sách address để background poller theo dõi.
+  // Gửi 1 lần khi UI bật, gửi lại nếu config thay đổi (vd user thêm point).
+  'POST /subscribe': async (req) => {
+    const { points } = await readBody(req);
+    if (!Array.isArray(points)) throw new Error('points phải là mảng');
+    subscribedPoints = points
+      .filter(p => p && typeof p.addr === 'string')
+      .map(p => ({ addr: p.addr, type: p.type || 'bit', area: p.area || 'V' }));
+    lastValues = {};   // reset cache → poll đầu tiên sẽ push toàn bộ snapshot
+    startBgPoll();
+    // Trigger 1 poll ngay không đợi 5s
+    setImmediate(() => backgroundPoll().catch(() => {}));
+    return { ok: true, count: subscribedPoints.length, pollIntervalMs: BG_POLL_INTERVAL_MS };
+  },
+
+  // Force poll ngay (cho nút "↻ Đọc lại" trong UI).
+  'POST /refresh': async () => {
+    if (subscribedPoints.length === 0) throw new Error('Chưa subscribe — UI cần POST /subscribe trước');
+    lastValues = {};   // reset → poll này push ALL như initial snapshot
+    await backgroundPoll();
+    return { ok: true, pointsPolled: subscribedPoints.length };
+  },
+
   'GET /time': async () => ({
     pcTimeMs: Date.now(),
     pcTimeISO: new Date().toISOString(),
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     tzOffsetMin: -new Date().getTimezoneOffset(),
+    ntp: {
+      enabled: !!ntpServer,
+      port: NTP_PORT,
+      lanIps: listLanIps(),
+      stats: ntpStats,
+    },
   }),
 
   // Đọc RTC PLC từ VB985..VB990 trong 1 transaction (FC 03 đọc 4 register).
@@ -575,37 +782,28 @@ const routes = {
     });
   },
 
-  // Set RTC bằng 3 frame FC06 sequential, gửi lần lượt:
-  //   Frame 1 (Year):        FC06 → HR 492 ← (00 << 8) | year
-  //   Frame 2 (Month+Day):   FC06 → HR 493 ← (month << 8) | day
-  //   Frame 3 (Hour+Minute): FC06 → HR 494 ← (hour << 8) | minute
-  // Delay 200ms giữa các frame. Diagnostic byte (VB984) bị ghi 0, LOGO! tự refresh.
+  // Set RTC qua Modbus FC06. Empirically verified với LOGO! 0BA8:
+  //   ✓ HR 493 (Month+Day) — writable
+  //   ✓ HR 494 (Hour+Minute) — writable
+  //   ✗ HR 492 (chứa VB984 Diagnostic) — firmware silently drop write
+  //
+  // → Chỉ gửi 2 frame. Year giữ nguyên (set qua Soft Comfort hoặc khi PLC
+  //   có S7 server enable → /s7-set-clock).
   'POST /set-clock': async (req) => {
-    const now = Date.now();
-    const sinceLast = now - lastTestRtcWriteTs;
-    if (sinceLast < TEST_RTC_COOLDOWN_MS) {
-      const wait = Math.ceil((TEST_RTC_COOLDOWN_MS - sinceLast) / 1000);
-      throw new Error(`Cooldown ${wait}s — đợi rồi thử lại.`);
-    }
-    if (req.headers['x-confirm-backup'] !== 'yes') {
-      throw new Error('Header X-Confirm-Backup: yes bắt buộc');
-    }
     const b = await readBody(req);
     const yr = b.year   | 0, mo = b.month | 0, dy = b.day | 0;
     const hr = b.hour   | 0, mn = b.minute | 0;
-    if (yr < 0 || yr > 99 || mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mn > 59) {
-      throw new Error(`Giá trị không hợp lệ: Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`);
+    if (mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mn > 59) {
+      throw new Error(`Giá trị không hợp lệ: M=${mo} D=${dy} H=${hr} Mn=${mn}`);
     }
-    lastTestRtcWriteTs = now;
-    console.warn(`[set-clock] 3 frame FC06: Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`);
+    console.warn(`[set-clock] 2 frame FC06: M=${mo} D=${dy} H=${hr} Mn=${mn} (Year=${yr} skip)`);
 
     return withModbus(async () => {
       // Baseline đọc trước khi ghi
       const before = (await client.readHoldingRegisters(492, 4)).data;
 
-      // 3 frame FC06 độc lập, gửi tuần tự
+      // 2 frame FC06 độc lập, gửi tuần tự (skip Year vì HR 492 không writable)
       const frames = [
-        { addr: 492, value: (0 << 8)  | yr,       label: 'Year',         purpose: `VB984=00 + VB985=${yr}` },
         { addr: 493, value: (mo << 8) | dy,       label: 'Month+Day',    purpose: `VB986=${mo} + VB987=${dy}` },
         { addr: 494, value: (hr << 8) | mn,       label: 'Hour+Minute',  purpose: `VB988=${hr} + VB989=${mn}` },
       ];
@@ -654,6 +852,14 @@ const routes = {
 
   // START PLC qua S7 (function 0x28 = warm start).
   'POST /plc-start': async () => s7StopStart('start'),
+
+  // Set RTC PLC qua S7 SetClock (UserData function 0x47.02). BCD encoded.
+  // Đây là cách Soft Comfort "Set Clock" dùng — set toàn bộ Y/M/D/H/M/S đồng thời.
+  'POST /s7-set-clock': async (req) => {
+    const b = await readBody(req);
+    const now = b.useNow ? new Date() : new Date(b.iso || Date.now());
+    return s7SetClock(now);
+  },
 
   // Gửi raw Modbus TCP frame. Strategy: tạm disconnect modbus-serial, mở
   // socket riêng để send/receive, đóng, reconnect modbus-serial.
@@ -846,6 +1052,35 @@ const routes = {
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { send(res, 204, {}); return; }
   const key = req.method + ' ' + req.url.split('?')[0];
+
+  // SSE endpoint — long-lived connection, không qua send() bình thường
+  if (key === 'GET /events') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write(':connected\n\n');
+    sseClients.add(res);
+    // Push initial snapshot ngay khi client connect
+    const allChanges = Object.entries(lastValues).map(([addr, value]) => {
+      const pt = subscribedPoints.find(p => p.addr === addr);
+      return { addr, value, area: pt?.area, type: pt?.type };
+    });
+    if (allChanges.length > 0) {
+      res.write(`event: state\ndata: ${JSON.stringify({ changes: allChanges, ts: Date.now(), initial: true })}\n\n`);
+    }
+    // Heartbeat mỗi 20s để giữ connection alive + detect dead client
+    const hb = setInterval(() => {
+      try { res.write(`:hb ${Date.now()}\n\n`); }
+      catch { clearInterval(hb); sseClients.delete(res); }
+    }, 20000);
+    req.on('close', () => { clearInterval(hb); sseClients.delete(res); });
+    return;
+  }
+
   const handler = routes[key];
   if (!handler) { send(res, 404, { error: 'Không có route: ' + key }); return; }
   try {
@@ -863,12 +1098,90 @@ server.listen(HTTP_PORT, '127.0.0.1', () => {
   for (const key of Object.keys(routes)) console.log(`         ${key}`);
 });
 
+// ── NTP SERVER — đồng bộ giờ PLC từ PC qua UDP 123 ───────────────────
+const NTP_EPOCH_OFFSET = 2208988800;  // giây giữa 1900-01-01 và 1970-01-01
+const NTP_PORT = parseInt(args['ntp-port'] || process.env.NTP_PORT || '123', 10);
+const NTP_DISABLED = args['no-ntp'] === true;
+const ntpStats = { count: 0, lastClient: null, lastTs: null };
+let ntpServer = null;
+
+function listLanIps() {
+  const out = [];
+  for (const [name, ifaces] of Object.entries(os.networkInterfaces())) {
+    for (const i of ifaces || []) if (i.family === 'IPv4' && !i.internal) out.push({ iface: name, ip: i.address });
+  }
+  return out;
+}
+
+function toNtpTs(jsMs) {
+  const total = jsMs / 1000 + NTP_EPOCH_OFFSET;
+  const sec = Math.floor(total);
+  const frac = Math.floor((total - sec) * 0x100000000) >>> 0;
+  return { sec, frac };
+}
+
+function buildNtpResponse(reqBuf, recvMs) {
+  const buf = Buffer.alloc(48);
+  const reqVn = (reqBuf[0] >> 3) & 7;
+  const vn = (reqVn >= 1 && reqVn <= 4) ? reqVn : 4;
+  buf[0] = (0 << 6) | (vn << 3) | 4;  // LI=0, VN=echo, Mode=4 server
+  buf[1] = 1;            // Stratum 1
+  buf[2] = 4;            // Poll 2^4=16s
+  buf[3] = 0xEC;         // Precision -20
+  buf.writeUInt32BE(0x00000010, 4);
+  buf.writeUInt32BE(0x00000010, 8);
+  buf.write('GPS\0', 12, 4, 'ascii');
+  const refTs = toNtpTs(recvMs - 1000);
+  buf.writeUInt32BE(refTs.sec, 16);
+  buf.writeUInt32BE(refTs.frac, 20);
+  if (reqBuf.length >= 48) reqBuf.copy(buf, 24, 40, 48);
+  const recvTs = toNtpTs(recvMs);
+  buf.writeUInt32BE(recvTs.sec, 32);
+  buf.writeUInt32BE(recvTs.frac, 36);
+  const txTs = toNtpTs(Date.now());
+  buf.writeUInt32BE(txTs.sec, 40);
+  buf.writeUInt32BE(txTs.frac, 44);
+  return buf;
+}
+
+function startNtpServer() {
+  if (NTP_DISABLED) { console.log('[ntp] tắt theo --no-ntp'); return; }
+  ntpServer = dgram.createSocket('udp4');
+  ntpServer.on('message', (msg, rinfo) => {
+    if (msg.length < 48) return;
+    const reqVn = (msg[0] >> 3) & 7;
+    const reqMode = msg[0] & 7;
+    const resp = buildNtpResponse(msg, Date.now());
+    ntpServer.send(resp, rinfo.port, rinfo.address);
+    ntpStats.count++;
+    ntpStats.lastClient = `${rinfo.address}:${rinfo.port}`;
+    ntpStats.lastTs = Date.now();
+    console.log(`[ntp] #${ntpStats.count} ← ${rinfo.address}:${rinfo.port}  (VN=${reqVn} Mode=${reqMode})`);
+  });
+  ntpServer.on('error', e => {
+    console.warn(`[ntp] lỗi: ${e.message}`);
+    if (e.code === 'EADDRINUSE') console.warn('[ntp] port 123 bị chiếm (W32Time?). Stop service đó hoặc --no-ntp.');
+    try { ntpServer.close(); } catch {}
+    ntpServer = null;
+  });
+  ntpServer.bind(NTP_PORT, () => {
+    console.log(`[ntp] ✓ NTP server sẵn sàng UDP ${NTP_PORT}`);
+    const ips = listLanIps();
+    if (ips.length) {
+      console.log('[ntp] IP LAN cấu hình trong LOGO!:');
+      for (const i of ips) console.log(`        ${i.ip}  (${i.iface})`);
+    }
+  });
+}
+
 // ── BOOTSTRAP ─────────────────────────────────────────────────────────
 console.log(`[proxy] target PLC = ${PLC_HOST}:${PLC_PORT} (slave ${SLAVE_ID}), timeout ${TIMEOUT}ms`);
 connectModbus();
+startNtpServer();
 
 ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => {
   console.log('[proxy] đang dừng...');
+  try { ntpServer && ntpServer.close(); } catch {}
   try { client.close(() => {}); } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500);
