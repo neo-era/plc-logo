@@ -9,3 +9,8 @@ server/certs/
 ~$*
 .DS_Store
 Thumbs.db
+
+# Soft Comfort PLC programs (customer data, may contain confidential config)
+*.lld
+*.lsc
+*.lma

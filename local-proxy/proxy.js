@@ -782,44 +782,90 @@ const routes = {
     });
   },
 
-  // Set RTC qua Modbus FC06. Empirically verified với LOGO! 0BA8:
-  //   ✓ HR 493 (Month+Day) — writable
-  //   ✓ HR 494 (Hour+Minute) — writable
-  //   ✗ HR 492 (chứa VB984 Diagnostic) — firmware silently drop write
+  // Set RTC qua Modbus. BREAKTHROUGH 2026-05-20:
+  //   ✗ FC06/FC16 vào HR 492 (Year): firmware RST connection
+  //   ✓ FC15 Write Coils @ 7880-7919 (5 byte V985-V989): TẤT CẢ WORK
   //
-  // → Chỉ gửi 2 frame. Year giữ nguyên (set qua Soft Comfort hoặc khi PLC
-  //   có S7 server enable → /s7-set-clock).
+  // 1 FC15 frame ghi toàn bộ Year + Month + Day + Hour + Minute.
+  // Coil mapping: V<byte>.<bit> → Coil (byte*8 + bit)
+  //   V985.0..7 = Coils 7880..7887 = Year byte
+  //   V986.0..7 = Coils 7888..7895 = Month byte
+  //   ... etc
   'POST /set-clock': async (req) => {
     const b = await readBody(req);
     const yr = b.year   | 0, mo = b.month | 0, dy = b.day | 0;
     const hr = b.hour   | 0, mn = b.minute | 0;
-    if (mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mn > 59) {
-      throw new Error(`Giá trị không hợp lệ: M=${mo} D=${dy} H=${hr} Mn=${mn}`);
+    if (yr < 0 || yr > 99 || mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mn > 59) {
+      throw new Error(`Giá trị không hợp lệ: Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`);
     }
-    console.warn(`[set-clock] 2 frame FC06: M=${mo} D=${dy} H=${hr} Mn=${mn} (Year=${yr} skip)`);
+    console.warn(`[set-clock] FC15 coil write: Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`);
 
     return withModbus(async () => {
       // Baseline đọc trước khi ghi
       const before = (await client.readHoldingRegisters(492, 4)).data;
 
-      // 2 frame FC06 độc lập, gửi tuần tự (skip Year vì HR 492 không writable)
+      // 1 FC15 frame: Coil 7880 start, 40 coils (5 bytes), data [Y,M,D,H,Mn]
+      const data = Buffer.from([yr, mo, dy, hr, mn]);
+      const t0 = Date.now();
+      // modbus-serial writeCoils accepts boolean array
+      const bools = [];
+      for (let i = 0; i < 5; i++) {
+        const byte = data[i];
+        for (let bit = 0; bit < 8; bit++) bools.push((byte >> bit) & 1 ? true : false);
+      }
+      await client.writeCoils(7880, bools);
+      const elapsed = Date.now() - t0;
+
+      // Readback sau write
+      await new Promise(r => setTimeout(r, 300));
+      const after = (await client.readHoldingRegisters(492, 4)).data;
+
+      return {
+        ok: true,
+        method: 'FC15 Write Coils @ 7880-7919 (5 bytes)',
+        elapsedMs: elapsed,
+        frames: [{
+          fc: 15,
+          startCoil: 7880,
+          count: 40,
+          bytes: 5,
+          dataHex: Array.from(data).map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' '),
+          purpose: `Y=${yr} M=${mo} D=${dy} H=${hr} Mn=${mn}`,
+        }],
+        before: {
+          VB984: (before[0] >> 8) & 0xFF, VB985: before[0] & 0xFF,
+          VB986: (before[1] >> 8) & 0xFF, VB987: before[1] & 0xFF,
+          VB988: (before[2] >> 8) & 0xFF, VB989: before[2] & 0xFF,
+          VB990: (before[3] >> 8) & 0xFF, VB991: before[3] & 0xFF,
+        },
+        after: {
+          VB984: (after[0] >> 8) & 0xFF, VB985: after[0] & 0xFF,
+          VB986: (after[1] >> 8) & 0xFF, VB987: after[1] & 0xFF,
+          VB988: (after[2] >> 8) & 0xFF, VB989: after[2] & 0xFF,
+          VB990: (after[3] >> 8) & 0xFF, VB991: after[3] & 0xFF,
+        },
+      };
+    });
+  },
+
+  // Legacy /set-clock-fc06 — giữ làm fallback (chỉ Month/Day/Hour/Min)
+  'POST /set-clock-fc06': async (req) => {
+    const b = await readBody(req);
+    const yr = b.year | 0, mo = b.month | 0, dy = b.day | 0;
+    const hr = b.hour | 0, mn = b.minute | 0;
+    if (mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mn > 59) {
+      throw new Error(`Giá trị không hợp lệ`);
+    }
+    return withModbus(async () => {
+      const before = (await client.readHoldingRegisters(492, 4)).data;
       const frames = [
-        { addr: 493, value: (mo << 8) | dy,       label: 'Month+Day',    purpose: `VB986=${mo} + VB987=${dy}` },
-        { addr: 494, value: (hr << 8) | mn,       label: 'Hour+Minute',  purpose: `VB988=${hr} + VB989=${mn}` },
+        { addr: 493, value: (mo << 8) | dy,   label: 'Month+Day' },
+        { addr: 494, value: (hr << 8) | mn,   label: 'Hour+Minute' },
       ];
       const log = [];
       for (const f of frames) {
-        const t0 = Date.now();
         await client.writeRegister(f.addr, f.value);
-        log.push({
-          fc: 6,
-          addr: f.addr,
-          value: f.value,
-          hex: '0x' + f.value.toString(16).padStart(4, '0').toUpperCase(),
-          label: f.label,
-          purpose: f.purpose,
-          elapsedMs: Date.now() - t0,
-        });
+        log.push({ fc: 6, addr: f.addr, value: f.value, hex: '0x' + f.value.toString(16).padStart(4, '0').toUpperCase(), label: f.label });
         await new Promise(r => setTimeout(r, 200));
       }
 
