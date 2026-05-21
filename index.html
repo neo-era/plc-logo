@@ -203,6 +203,18 @@
     .clock-cell.plc.stale  .clock-badge { background: #fef3c7; color: #92400e; }
     .clock-cell.plc.error  .clock-badge { background: #fee2e2; color: #991b1b; }
 
+    /* Set-clock form inputs */
+    .sc-input {
+      display: block; width: 100%; padding: 8px;
+      border: 1.5px solid var(--border); border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700;
+      text-align: center; margin-top: 4px;
+      -moz-appearance: textfield; appearance: textfield;
+    }
+    .sc-input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px rgba(249,115,22,.12); }
+    .sc-input::-webkit-outer-spin-button,
+    .sc-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
     /* ── FRAME LOG ── */
     .frame-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
     .frame-toolbar .stat { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
@@ -358,24 +370,19 @@
 
   <!-- ── TAB: LỊCH CHIẾU SÁNG (Timer ON/OFF) ── -->
   <section id="tab-timers" class="tab-panel">
+
+    <!-- Weekly timer ON/OFF -->
     <div class="card">
       <h3>⏰ Lịch ON/OFF của weekly timer</h3>
-      <div class="card-sub">Cấu hình giờ bật/tắt cho 3 timer chính của chương trình. Định dạng <code>HH:MM</code> (24h). Encoding: <code>VW = 0xHHMM</code> (BCD theo từng digit thập phân).</div>
+      <div class="card-sub">Cấu hình giờ bật/tắt cho 3 timer chính. Định dạng <code>HH:MM</code> (24h). Encoding BCD <code>VW = 0xHHMM</code>.</div>
       <div id="timersList"></div>
-      <div class="banner banner-warn" style="margin-top:10px">
-        ⚠️ <div>Thay đổi <b>có hiệu lực ngay</b> trên PLC. Đèn đang bật theo lịch cũ vẫn giữ trạng thái cho đến edge tiếp theo. Để áp dụng tức thì, tắt+bật <code>V0.1</code>/<code>V0.2</code> trong tab Trạng thái.</div>
-      </div>
     </div>
 
-    <!-- ── ĐỒNG HỒ RTC PLC (CHỈ ĐỌC) ── -->
+    <!-- Đồng hồ PC vs PLC + Apply -->
     <div class="card">
-      <h3>🕐 Đồng hồ PLC (read-only)</h3>
+      <h3>🕐 Đồng hồ &amp; đồng bộ PLC ← PC</h3>
       <div class="card-sub">
-        Đọc 6 byte VM <code>VB985-VB990</code> (Year/Month/Day/Hour/Minute/Second).
-      </div>
-
-      <div class="banner banner-warn" style="margin-bottom:10px">
-        ⚠️ <div><b>KHÔNG được write RTC qua Modbus</b>. Mặc dù docs Siemens ghi VB985-990 là "Reserved for RTC", trong firmware 0BA8 thực tế: write vào HR 492-495 khiến LOGO! reboot, <b>3 write liên tiếp = XÓA chương trình PLC</b>. Để set RTC, dùng <b>Soft Comfort → Tools → Set Clock</b>.</div>
+        PLC RTC đọc từ <code>VB985-VB990</code>. Apply gửi 1 frame FC15 Write Coils @ 7880 (5 byte Y/M/D/H/Mn).
       </div>
 
       <div class="clock-pair">
@@ -385,118 +392,106 @@
           <div class="clock-date mono" id="timePcDate">—</div>
         </div>
         <div class="clock-cell plc" id="clockPlcCell">
-          <div class="clock-label">🏭 Giờ PLC RTC (read-only)</div>
+          <div class="clock-label">🏭 Giờ PLC RTC</div>
           <div class="clock-time mono" id="timePlcNow">—</div>
           <div class="clock-date mono" id="timePlcDate">—</div>
           <div class="clock-badge" id="timePlcBadge">đang đọc...</div>
         </div>
       </div>
 
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        <button class="btn btn-outline" onclick="readPlcRtc(true)">↻ Đọc lại RTC PLC</button>
+      <!-- Form Y/M/D/H/Mn + buttons -->
+      <div style="background:var(--bg);border-radius:8px;padding:12px;margin-top:12px">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:8px">
+          <label style="font-size:11px;color:var(--muted)">Day<input type="number" id="scDay"   min="1" max="31" value="1"   class="sc-input"></label>
+          <label style="font-size:11px;color:var(--muted)">Month<input type="number" id="scMonth" min="1" max="12" value="1"  class="sc-input"></label>
+          <label style="font-size:11px;color:var(--muted)">Year<input type="number" id="scYear"  min="2000" max="2099" value="2026" class="sc-input"></label>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px">
+          <label style="font-size:11px;color:var(--muted)">Hours<input type="number" id="scHour"   min="0" max="23" value="0" class="sc-input"></label>
+          <label style="font-size:11px;color:var(--muted)">Minute<input type="number" id="scMinute" min="0" max="59" value="0" class="sc-input"></label>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="scReadFromPc()">⌨️ Read PC</button>
+          <button class="btn btn-outline" onclick="scReadFromLogo()">🏭 Read LOGO!</button>
+          <button class="btn btn-outline" onclick="readPlcRtc(true)">↻ Refresh clock</button>
+          <button class="btn btn-primary" id="scApplyBtn" onclick="scApplyToLogo()" style="flex:1;min-width:160px">💾 Apply to LOGO!</button>
+        </div>
       </div>
 
-      <div class="time-grid">
+      <div class="time-grid" style="margin-top:10px">
         <div class="time-cell">
           <div class="time-key">Múi giờ PC</div>
           <div class="time-val mono" id="timeTz">—</div>
         </div>
       </div>
+
+      <div id="labResult" style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:36px;white-space:pre-wrap;display:none"></div>
     </div>
 
-    <!-- ── 🧪 SET CLOCK (giống Soft Comfort dialog) ── -->
-    <div class="card" style="border:2px solid var(--orange); background:#fff7ed">
-      <h3 style="color:var(--orange)">🕐 Set Clock (FC06 RMW 5 byte VB985-989)</h3>
-      <div class="card-sub">
-        Clone giao diện Soft Comfort → Tools → Set Clock. Apply gửi 5 lệnh FC06 RMW tuần tự (Year/Month/Day/Hour/Minute), delay 200ms/lần. <b>An toàn (đã verify FC06 single không crash) nhưng có thể PLC ghi đè giá trị system sau write.</b>
+    <!-- Raw frame sender — visible card -->
+    <div class="card">
+      <h3>⚡ Raw frame sender (test Modbus TCP)</h3>
+      <div class="card-sub">Paste hex Modbus TCP. Proxy mở socket riêng, gửi raw, đọc response. Hỗ trợ space/dash/colon giữa các byte.</div>
+      <textarea id="rawFrameInput" rows="2" placeholder="vd: 00 01 00 00 00 06 01 03 01 EC 00 04   (đọc HR 492-495)"
+                oninput="parseRawFrame()"
+                style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;margin-top:8px"></textarea>
+      <div id="rawFrameParse" style="font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:6px;min-height:18px"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="sendRawFrame()">📡 Gửi raw frame</button>
+        <button class="btn btn-outline" onclick="rawFramePreset('read-rtc')">⚙ Read RTC</button>
+        <button class="btn btn-outline" onclick="rawFramePreset('read-q')">⚙ Read Q1-Q4</button>
+        <button class="btn btn-outline" onclick="rawFramePreset('fc15-year')">⚙ FC15 set Year</button>
+        <button class="btn btn-outline" onclick="rawFramePreset('fc16-rtc')">⚙ FC16 (RISK)</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('rawFrameInput').value='';parseRawFrame()">🗑 Clear</button>
       </div>
-
-      <div class="banner banner-warn" style="margin:10px 0">
-        ⚠️ <div>Yêu cầu backup .lld + pause polling. Cooldown 60s giữa các lần Apply.</div>
-      </div>
-
-      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:10px 0;cursor:pointer">
-        <input type="checkbox" id="labBackupConfirm" onchange="updateLabState()" style="width:18px;height:18px">
-        <span>Tôi đã <b>backup chương trình</b> sang file .lld</span>
-      </label>
-
-      <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-outline" id="labPauseBtn" onclick="toggleLabPausePolling()">⏸ Pause polling</button>
-        <span id="labPollStatus" style="font-size:12px;color:var(--muted)">polling: <b>running</b></span>
-      </div>
-
-      <!-- Soft-Comfort-style form: Day / Month / Year | Hours / Minute -->
-      <div style="background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:10px">
-        <div style="font-weight:700;margin-bottom:10px;font-size:13px">Date and time</div>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px">
-          <label style="font-size:12px">Day:<input type="number" id="scDay"   min="1" max="31" value="1"   style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
-          <label style="font-size:12px">Month:<input type="number" id="scMonth" min="1" max="12" value="1"  style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
-          <label style="font-size:12px">Year:<input type="number" id="scYear"  min="2000" max="2099" value="2026" style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px">
-          <label style="font-size:12px">Hours:<input type="number" id="scHour"   min="0" max="23" value="0" style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
-          <label style="font-size:12px">Minute:<input type="number" id="scMinute" min="0" max="59" value="0" style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;text-align:center"></label>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-outline" onclick="scReadFromPc()">⌨️ Read from PC</button>
-          <button class="btn btn-outline" onclick="scReadFromLogo()">🏭 Read from LOGO!</button>
-          <button class="btn btn-primary" id="scApplyBtn" onclick="scApplyToLogo()">💾 Apply to LOGO!</button>
-        </div>
-      </div>
-
-      <div id="labResult" style="margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap"></div>
-
-      <!-- ── 🛑 PLC STOP / START qua S7 protocol ── -->
-      <div style="margin-top:16px;padding:12px;border:2px solid var(--navy);background:#f0f9ff;border-radius:8px">
-        <div style="font-weight:800;color:var(--navy);margin-bottom:6px">🛑 PLC Stop / Start (qua S7 protocol port 102)</div>
-        <div style="font-size:12px;margin-bottom:10px">
-          Trước khi modify RTC/setpoint qua raw frame: STOP PLC để chương trình không ghi đè. Sau xong → START lại.
-          <br><b>Lưu ý:</b> Khi STOP, đèn Q sẽ OFF hết (program không chạy). Output relay về trạng thái default.
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-danger" onclick="plcStop()">🛑 STOP PLC</button>
-          <button class="btn btn-primary" onclick="plcStart()">▶ START PLC</button>
-          <span id="plcStateBadge" style="font-size:12px;color:var(--muted)">trạng thái: ?</span>
-        </div>
-        <div id="s7Result" style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap;display:none"></div>
-      </div>
-
-      <!-- ── ⚡ RAW FRAME INPUT — gửi hex tùy ý ── -->
-      <div style="margin-top:16px;padding:12px;border:2px solid var(--orange);background:#fff7ed;border-radius:8px">
-        <div style="font-weight:800;color:var(--orange);margin-bottom:6px">⚡ Raw frame — gửi hex string trực tiếp</div>
-        <div style="font-size:12px;margin-bottom:10px">
-          Paste/gõ Modbus TCP frame dưới dạng hex. Proxy mở socket RIÊNG (không qua queue polling), gửi raw bytes, đọc response. Hỗ trợ space/dash/colon/comma giữa các byte.
-        </div>
-        <textarea id="rawFrameInput" rows="2" placeholder="vd: 00 01 00 00 00 06 01 03 01 EC 00 04   (đọc HR 492-495)"
-                  oninput="parseRawFrame()"
-                  style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical"></textarea>
-        <div id="rawFrameParse" style="font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:6px;min-height:18px"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-primary" onclick="sendRawFrame()">📡 Gửi raw frame</button>
-          <button class="btn btn-outline" onclick="rawFramePreset('read-rtc')">⚙ Read HR 492-495 (RTC)</button>
-          <button class="btn btn-outline" onclick="rawFramePreset('read-q')">⚙ Read Q1-Q4</button>
-          <button class="btn btn-outline" onclick="rawFramePreset('fc16-rtc')">⚙ FC16 set RTC (RISK)</button>
-          <button class="btn btn-ghost" onclick="document.getElementById('rawFrameInput').value='';parseRawFrame()">🗑 Clear</button>
-        </div>
-        <div id="rawFrameResult" style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:40px;white-space:pre-wrap"></div>
-      </div>
-
-      <!-- ── 🔥 DESTRUCTIVE FC16 TEST (đã wipe 2 lần) ── -->
-      <div style="margin-top:16px;padding:12px;border:2px dashed var(--red);background:#fef2f2;border-radius:8px">
-        <div style="font-weight:800;color:var(--red);margin-bottom:6px">🔥 FC16 test — frame AI hướng dẫn (ĐÃ WIPE 2 LẦN)</div>
-        <div style="font-size:12px;margin-bottom:10px">
-          Reproduce frame <code>00 01 00 00 00 0D 01 10 01 EC 00 04 08 ...</code> FC16 write 4 registers HR 492-495.
-          Đã verify wipe program 2 lần. Cooldown 5 phút giữa lần click. Cần typed confirmation.
-        </div>
-        <label style="display:block;font-size:12px;margin-bottom:6px">
-          Gõ chính xác <code>I-UNDERSTAND-WIPE-RISK</code> để unlock:
-          <input type="text" id="fc16ConfirmInput" placeholder="(empty)" oninput="updateFc16Btn()" style="display:block;width:100%;margin-top:4px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace">
-        </label>
-        <button class="btn btn-danger" id="fc16TestBtn" disabled onclick="labTestFc16Destructive()" style="background:#991b1b">
-          🔥 SEND FC16 FRAME (RISK WIPE)
-        </button>
-      </div>
+      <div id="rawFrameResult" style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;background:#0f172a;color:#cbd5e1;padding:10px;border-radius:6px;min-height:36px;white-space:pre-wrap;display:none"></div>
     </div>
+
+    <!-- Developer tools (collapsed): Stop/Start + Destructive test -->
+    <details class="card" style="padding:0">
+      <summary style="cursor:pointer;padding:14px 16px;font-weight:700;font-size:14px;list-style:none;display:flex;align-items:center;justify-content:space-between">
+        <span>🛠 Developer tools <span style="font-weight:400;font-size:12px;color:var(--muted)">(Stop/Start PLC · FC16 destructive)</span></span>
+        <span style="font-size:12px;color:var(--muted)">▾</span>
+      </summary>
+      <div style="padding:0 16px 16px">
+
+        <!-- PLC Stop / Start -->
+        <div style="margin-top:8px;padding:12px;border:1px solid var(--border);border-radius:8px">
+          <div style="font-weight:700;margin-bottom:6px">🛑 PLC Stop / Start <span style="font-weight:400;font-size:11px;color:var(--muted)">(S7 protocol :102)</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">STOP: chương trình ngừng → Q1-Q4 tắt hết. START để chạy lại.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-danger" onclick="plcStop()">🛑 STOP</button>
+            <button class="btn btn-primary" onclick="plcStart()">▶ START</button>
+            <span id="plcStateBadge" style="font-size:12px;color:var(--muted)">trạng thái: ?</span>
+          </div>
+          <div id="s7Result" style="margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#cbd5e1;padding:8px;border-radius:6px;min-height:24px;white-space:pre-wrap;display:none"></div>
+        </div>
+
+        <!-- FC16 destructive test -->
+        <details style="margin-top:12px;padding:12px;border:1px dashed var(--red);background:#fef2f2;border-radius:8px">
+          <summary style="cursor:pointer;font-weight:700;color:var(--red);font-size:13px">🔥 Destructive FC16 test (đã wipe program 2 lần)</summary>
+          <div style="margin-top:8px;font-size:12px">
+            Reproduce frame <code>01 10 01 EC 00 04 08 ...</code> — FC16 write 4 reg HR 492-495. Cooldown 5 phút. Cần typed confirmation.
+          </div>
+          <label style="display:block;font-size:11px;margin-top:8px;color:var(--muted)">
+            Gõ <code>I-UNDERSTAND-WIPE-RISK</code> để unlock:
+            <input type="text" id="fc16ConfirmInput" oninput="updateFc16Btn()" style="display:block;width:100%;margin-top:4px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'JetBrains Mono',monospace">
+          </label>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:6px;cursor:pointer">
+            <input type="checkbox" id="labBackupConfirm" onchange="updateLabState()">
+            <span>Tôi đã backup .lld</span>
+          </label>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-outline" id="labPauseBtn" onclick="toggleLabPausePolling()">⏸ Pause</button>
+            <span id="labPollStatus" style="font-size:11px;color:var(--muted)">polling: running</span>
+          </div>
+          <button class="btn btn-danger" id="fc16TestBtn" disabled onclick="labTestFc16Destructive()" style="background:#991b1b;margin-top:8px">
+            🔥 SEND FC16 (RISK WIPE)
+          </button>
+        </details>
+
+      </div>
+    </details>
   </section>
 
   <!-- ── TAB: BIỂU ĐỒ ── -->
@@ -1246,14 +1241,13 @@ async function scApplyToLogo() {
   const payload = { year: year - 2000, month, day, hour, minute };
 
   if (!confirm(`Apply to LOGO!?\n\n${day}/${month}/${year}  ${hour}:${String(minute).padStart(2,'0')}\n\n` +
-               `Sẽ gửi 3 frame FC06 tuần tự:\n` +
-               `  Frame 1: HR 492 ← Year\n` +
-               `  Frame 2: HR 493 ← Month+Day\n` +
-               `  Frame 3: HR 494 ← Hour+Minute\n\n` +
+               `1 frame FC15 Write Coils @ 7880 (5 byte VB985-989):\n` +
+               `  Year + Month + Day + Hour + Minute\n\n` +
                `OK để gửi, Cancel hủy.`)) return;
 
   const resultEl = document.getElementById('labResult');
-  resultEl.textContent = '⏳ Đang gửi 3 FC06 frames...';
+  resultEl.style.display = 'block';
+  resultEl.textContent = '⏳ Đang gửi FC15 frame...';
 
   const t0 = Date.now();
   try {
@@ -1269,20 +1263,18 @@ async function scApplyToLogo() {
 
     const before = j.before, after = j.after;
     const lines = [
-      `✓ Write success (${elapsed}ms tổng cộng)`,
+      `✓ Write success (${elapsed}ms)`,
       ``,
-      `3 frame FC06 đã gửi:`,
-      ...j.frames.map((f, i) => `  ${i+1}. ${f.label.padEnd(14)} FC06 HR ${f.addr} ← ${f.hex}  (${f.purpose}, ${f.elapsedMs}ms)`),
+      `Method: ${j.method || 'FC15 Write Coils'}`,
+      ...j.frames.map(f => `  FC${f.fc} ${f.dataHex || f.hex || ''}  ${f.purpose || f.label || ''}`),
       ``,
-      `Compare BEFORE → AFTER readback toàn vùng RTC:`,
-      `  Year   (VB985):  ${before.VB985}  →  ${after.VB985}  ${after.VB985 === payload.year   ? '✓' : '✗ LOGO! overwrote'}`,
-      `  Month  (VB986):  ${before.VB986}  →  ${after.VB986}  ${after.VB986 === payload.month  ? '✓' : '✗ LOGO! overwrote'}`,
-      `  Day    (VB987):  ${before.VB987}  →  ${after.VB987}  ${after.VB987 === payload.day    ? '✓' : '✗ LOGO! overwrote'}`,
-      `  Hour   (VB988):  ${before.VB988}  →  ${after.VB988}  ${after.VB988 === payload.hour   ? '✓' : '✗ LOGO! overwrote'}`,
-      `  Minute (VB989):  ${before.VB989}  →  ${after.VB989}  ${after.VB989 === payload.minute ? '✓' : '✗ LOGO! overwrote'}`,
-      `  Second (VB990):  ${before.VB990}  →  ${after.VB990}  (không write — chỉ readback)`,
-      ``,
-      `Diagnostic (VB984): ${before.VB984} → ${after.VB984}  (Frame 1 ghi 0, LOGO! refresh sau)`,
+      `Compare BEFORE → AFTER:`,
+      `  Year   (VB985):  ${before.VB985}  →  ${after.VB985}  ${after.VB985 === payload.year   ? '✓' : '✗'}`,
+      `  Month  (VB986):  ${before.VB986}  →  ${after.VB986}  ${after.VB986 === payload.month  ? '✓' : '✗'}`,
+      `  Day    (VB987):  ${before.VB987}  →  ${after.VB987}  ${after.VB987 === payload.day    ? '✓' : '✗'}`,
+      `  Hour   (VB988):  ${before.VB988}  →  ${after.VB988}  ${after.VB988 === payload.hour   ? '✓' : '✗'}`,
+      `  Minute (VB989):  ${before.VB989}  →  ${after.VB989}  ${after.VB989 === payload.minute ? '✓' : '✗'}`,
+      `  Second (VB990):  ${before.VB990}  →  ${after.VB990}  (not written)`,
       ``,
       `⏳ Verify PLC alive sau 3s...`,
     ];
@@ -1406,10 +1398,18 @@ function parseRawFrame() {
 }
 
 function rawFramePreset(name) {
+  // Auto-build presets dùng giờ PC hiện tại nếu phù hợp
+  const now = new Date();
+  const yy = (now.getFullYear() % 100).toString(16).padStart(2, '0').toUpperCase();
+  const mo = now.getMonth() + 1; const moHex = mo.toString(16).padStart(2, '0').toUpperCase();
+  const dy = now.getDate();      const dyHex = dy.toString(16).padStart(2, '0').toUpperCase();
+  const hr = now.getHours();     const hrHex = hr.toString(16).padStart(2, '0').toUpperCase();
+  const mn = now.getMinutes();   const mnHex = mn.toString(16).padStart(2, '0').toUpperCase();
   const presets = {
-    'read-rtc':  '00 01 00 00 00 06 01 03 01 EC 00 04',   // FC03 read HR 492-495
-    'read-q':    '00 02 00 00 00 06 01 01 20 00 00 04',   // FC01 read coils 8192-8195
-    'fc16-rtc':  '00 03 00 00 00 0D 01 10 01 EC 00 04 08 00 1A 05 13 0F 36 00 33',
+    'read-rtc':   '00 01 00 00 00 06 01 03 01 EC 00 04',                              // FC03 read HR 492-495
+    'read-q':     '00 02 00 00 00 06 01 01 20 00 00 04',                              // FC01 read coils Q1-Q4
+    'fc15-year':  `00 04 00 00 00 0C 01 0F 1E C8 00 28 05 ${yy} ${moHex} ${dyHex} ${hrHex} ${mnHex}`,  // FC15 5 byte safe
+    'fc16-rtc':   '00 03 00 00 00 0D 01 10 01 EC 00 04 08 00 1A 05 13 0F 36 00 33',  // FC16 DESTRUCTIVE
   };
   if (!presets[name]) return;
   document.getElementById('rawFrameInput').value = presets[name];
@@ -1435,6 +1435,7 @@ async function sendRawFrame() {
   }
 
   const resultEl = document.getElementById('rawFrameResult');
+  resultEl.style.display = 'block';
   resultEl.textContent = '⏳ Đang gửi...';
   const t0 = Date.now();
   try {

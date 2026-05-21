@@ -10,7 +10,7 @@
 
 ## I. TÓM TẮT ĐIỀU HÀNH
 
-Đề xuất xây dựng hệ thống **giám sát và điều khiển từ xa qua internet** cho **50 tủ điện chiếu sáng công cộng (CSCC)** sử dụng PLC Siemens LOGO! 230RCE, triển khai trong vòng **12 tháng**, ngân sách dự kiến **200–300 triệu đồng**.
+Đề xuất xây dựng hệ thống **giám sát và điều khiển từ xa qua internet** cho **50 tủ điện chiếu sáng công cộng (CSCC)** sử dụng PLC Siemens LOGO! 230RCE, triển khai trong vòng **1 tháng**, ngân sách dự kiến **200–300 triệu đồng**.
 
 Hệ thống cho phép:
 - Bật/tắt từng tuyến đèn từ xa qua điện thoại hoặc máy tính.
