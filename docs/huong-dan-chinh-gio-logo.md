@@ -49,6 +49,13 @@ K3: 22:00  04:00       ← T006: bật – tắt
 4. Dùng ◄► đưa con trỏ đến giờ/phút cần đổi, ▲▼ thay đổi, **OK** lưu.
 5. ESC về màn hình chính, kiểm tra dòng K1/K2/K3 đã hiện giờ mới.
 
+**Cách nhanh – sửa ngay trên màn hình chính:** màn hình K1/K2/K3 là màn hình thông báo SF007, luôn hiện vì chân kích hoạt (En) nối mức High. Các ô giờ trên đó sửa trực tiếp được:
+
+1. Dùng ◄ ► chọn ô giờ cần sửa; ô được chọn sẽ bị bôi đen.
+2. Dùng ▲ ▼ đổi giá trị.
+3. Nhấn **OK** để lưu, hoặc **ESC** để bỏ, giữ giờ cũ.
+4. Nếu ESC đưa vào menu (Stop / Set Param …), nhấn **ESC** thêm lần nữa để về màn hình chính. **Không chọn Stop.**
+
 ### Quy tắc khi đặt giờ K1 – K2
 
 Trong chương trình, **K2 chỉ đóng khi K1 đã bật đủ 30 giây** (khối T003), và K2 cắt theo khi K1 cắt. Vì vậy:
