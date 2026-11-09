@@ -104,3 +104,26 @@ Ghi lại: khối nào điều khiển ngõ ra nào (Q1 – đèn cả đêm, Q2
 | Không thấy khối trong Set Param | Khối bị bảo vệ tham số | Sửa bằng Soft Comfort (mục 4.3) |
 | Sửa trên máy tính xong nhưng tủ không đổi | Chưa nạp xuống hoặc nạp sai LOGO! (sai IP) | Nạp lại, kiểm tra IP; đọc chương trình về để đối chiếu |
 | Đêm có đêm không bật | Cột D= chưa chọn đủ các thứ | Chọn đủ 7 ngày (MTWTFSS) |
+
+## 7. Đọc màn hình chính của tủ – ví dụ tủ LUC02
+
+Màn hình chính của LOGO! 230RCE (6ED1052-1FB08-0BA2) trong tủ hiển thị dạng:
+
+```
+2020-03-01 LUC02
+Su 00:00        0
+1 19:45 05:45   1
+2 17:46 05:45   1
+3 18:00 04:00
+www.LAVIPCO.TECH
+```
+
+| Dòng | Ý nghĩa (theo ảnh chụp thực tế tại tủ) |
+|---|---|
+| `2020-03-01 LUC02` | Ngày hiện tại của đồng hồ LOGO! và tên tủ |
+| `Su 00:00` | Thứ và giờ hiện tại của đồng hồ LOGO! |
+| `1 19:45 05:45` | Lịch mạch/nhánh 1: giờ bật – giờ tắt |
+| `2 17:46 05:45` | Lịch mạch/nhánh 2: giờ bật – giờ tắt |
+| `3 18:00 04:00` | Lịch mạch/nhánh 3: giờ bật – giờ tắt |
+
+> **Dấu hiệu đồng hồ đã mất giờ:** ngày hiện `2020-03-01` (hoặc một ngày cũ bất kỳ) và giờ đứng ở `00:00`. Đây là trạng thái sau khi LOGO! mất nguồn quá lâu (theo Siemens, LOGO! 8 giữ được giờ khoảng 20 ngày khi mất điện). Khi đó lịch bật/tắt vẫn còn nhưng tủ sẽ đóng/cắt sai giờ → **phải làm ngay mục 3 (chỉnh đồng hồ)**, sau đó đối chiếu lại các dòng 1–3 với lịch vận hành được duyệt.
