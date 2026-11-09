@@ -1,129 +1,79 @@
 # Hướng dẫn chỉnh giờ tủ điều khiển LOGO! – chương trình NisseLOGOProgram_V2-ELR
 
-*Ngày lập: 09/11/2026*
+*Tủ LVC02 – LOGO! 230RCE (6ED1052-1FB08-0BA2) – IP 192.168.0.3 – lập ngày 09/11/2026*
 
-## 1. Phạm vi và lưu ý trước khi làm
+## 1. Các khối hẹn giờ cần chỉnh
 
-- Áp dụng cho tủ dùng bộ điều khiển Siemens LOGO! 8 (có đồng hồ thời gian thực) chạy chương trình **NisseLOGOProgram_V2-ELR.lld**, lập bằng LOGO!Soft Comfort V8.
-- "Chỉnh giờ" gồm 2 việc khác nhau, cần phân biệt:
-    - **Chỉnh đồng hồ của LOGO!** (ngày, thứ, giờ hiện tại) — khi đồng hồ chạy sai, sau mất điện lâu, thay LOGO!.
-    - **Chỉnh giờ bật/tắt** trong các khối hẹn giờ (Weekly Timer, Yearly Timer, Astronomical Clock) — khi cần đổi lịch đóng/cắt đèn.
-- Luôn chỉnh đồng hồ đúng trước, rồi mới kiểm tra giờ bật/tắt; đồng hồ sai thì lịch đúng vẫn đóng/cắt sai.
-- Trước khi sửa: ghi lại (chụp ảnh màn hình LOGO!) toàn bộ thông số cũ để có thể trả lại khi cần.
-- Khi nạp chương trình từ máy tính, LOGO! chuyển sang STOP, các ngõ ra Q sẽ cắt trong lúc nạp — chọn thời điểm ban ngày, báo trước cho đơn vị quản lý tuyến.
+| Khối | Điều khiển | Giờ bật | Giờ tắt | Ngày |
+|---|---|---|---|---|
+| **T001** – B1 timer | K1 (Q2) | 17:45 | 05:45 | MTWTFSS |
+| **T002** – B2 timer | K2 (Q3) | 17:46 | 05:45 | MTWTFSS |
+| **T006** – HPS timer | K3 (Q4) | 22:00 | 04:00 | MTWTFSS |
 
-## 2. Phím bấm trên mặt LOGO!
+Giờ trong bảng là cài đặt gốc trong file chương trình. Mỗi khối chỉ dùng **Cam 1 (No1)**; Cam 2, Cam 3 để trống.
 
-| Phím | Tác dụng |
+## 2. Kiểm tra trên màn hình tủ
+
+```
+2020-03-01  LVC02      ← ngày hiện tại – tên tủ
+00:00             0    ← giờ hiện tại – (số lần ELR tác động)
+K1: 17:45  05:45  1    ← T001: bật – tắt – trạng thái K1 (1 = đang đóng)
+K2: 17:46  05:45  1    ← T002: bật – tắt – trạng thái K2
+K3: 22:00  04:00       ← T006: bật – tắt
+```
+
+- Dòng 1–2 sai ngày/giờ (ví dụ `2020-03-01`, `00:00`) → đồng hồ đã mất giờ, đèn sẽ đóng/cắt sai, có thể sáng cả ban ngày → làm **mục 3**.
+- Dòng K1/K2/K3 cần đổi lịch → làm **mục 4**.
+
+## 3. Chỉnh đồng hồ (ngày, giờ hiện tại)
+
+**Trên mặt LOGO!:**
+
+1. Khi LOGO! đang RUN, nhấn **ESC**.
+2. Chọn **Set..** (hoặc **Setup**) → **OK** → **Clock** → **OK** → **Set Clock** → **OK**.
+3. Dùng ▲▼ đổi giá trị, ◄► sang ô kế tiếp: thứ → giờ → phút → năm → tháng → ngày.
+4. Nhấn **OK** để lưu, ESC về màn hình chính, kiểm tra dòng 1–2.
+
+**Từ máy tính (LOGO!Soft Comfort):** đặt IP máy tính 192.168.0.x (khác .3) → **Tools → Transfer → Set Clock…** → chọn LOGO! 192.168.0.3 → lấy giờ máy tính (phải đúng giờ Việt Nam) → gửi. LOGO! không phải dừng chạy.
+
+**Giờ mùa hè:** mục **Clock → S/W Time** phải để **Off**; nếu để On, đèn lệch 1 giờ từ tháng 3 đến tháng 10.
+
+## 4. Chỉnh giờ bật/tắt
+
+1. Khi LOGO! đang RUN, nhấn **ESC** → **Set Param** → **OK**.
+2. Dùng ▲▼ chọn khối: **T001** (K1), **T002** (K2) hoặc **T006** (K3) → **OK**.
+3. Màn hình Cam 1 hiện:
+    - `D=MTWTFSS` – giữ đủ 7 ngày
+    - `On =17:45` – giờ bật
+    - `Off=05:45` – giờ tắt
+4. Dùng ◄► đưa con trỏ đến giờ/phút cần đổi, ▲▼ thay đổi, **OK** lưu.
+5. ESC về màn hình chính, kiểm tra dòng K1/K2/K3 đã hiện giờ mới.
+
+### Quy tắc khi đặt giờ K1 – K2
+
+Trong chương trình, **K2 chỉ đóng khi K1 đã bật đủ 30 giây** (khối T003), và K2 cắt theo khi K1 cắt. Vì vậy:
+
+| Quy tắc | Nếu đặt sai |
 |---|---|
-| ESC | Vào menu (khi đang RUN) / quay lại |
-| ▲ ▼ | Chọn mục menu / tăng-giảm giá trị |
-| ◄ ► | Di chuyển con trỏ sang vị trí kế tiếp |
-| OK | Xác nhận |
+| Giờ bật T002 ≥ giờ bật T001 + 1 phút | K2 vẫn phải chờ K1 bật 30 giây mới đóng |
+| Giờ tắt T002 ≤ giờ tắt T001 | K2 tắt cùng K1, phần giờ đặt muộn hơn không có tác dụng |
+| T006 (K3) đặt tự do | K3 độc lập, không phụ thuộc K1, K2 |
+| Giờ qua đêm (bật 17:45, tắt 05:45) đặt bình thường | Khối hẹn giờ tự hiểu khoảng qua 0 giờ |
 
-## 3. Chỉnh đồng hồ thực của LOGO! (ngày, thứ, giờ)
+> **Tủ LVC02:** ảnh chụp màn hình ngày 09/11/2026 có vẻ đang hiện K1 bật **19:45** (file gốc là 17:45). Nếu đúng vậy thì K2 dù đặt 17:46 cũng chỉ sáng từ **19:45:30**. Cần đặt lại T001 theo lịch được duyệt.
 
-### Cách A – Trên mặt LOGO! (không cần máy tính)
+### Chỉnh bằng LOGO!Soft Comfort (khi cần)
 
-1. Khi LOGO! đang RUN, nhấn **ESC** để vào menu tham số.
-2. Dùng ▲▼ chọn **Set..** (đời LOGO! 8 có thể hiển thị là **Setup**), nhấn **OK**.
-3. Chọn **Clock** → **OK** → chọn **Set Clock** → **OK**.
-4. Màn hình hiện thứ, giờ và ngày (dạng `Mo 15:30` / `YYYY-MM-DD`). Con trỏ đứng ở ô thứ trong tuần.
-5. Dùng ▲▼ đổi giá trị, ◄► sang ô kế tiếp: thứ → giờ → phút → năm → tháng → ngày.
-6. Nhấn **OK** để lưu. Nhấn ESC nhiều lần để về màn hình chính, kiểm tra giờ hiển thị.
+1. **Tools → Transfer → LOGO! → PC** để đọc chương trình đang chạy về, lưu file mới có ngày tháng.
+2. Nhấp đúp khối **T001 / T002 / T006** → sửa Cam 1 → **OK** → lưu file.
+3. **Tools → Transfer → PC → LOGO!** để nạp xuống 192.168.0.3. Trong lúc nạp LOGO! dừng chạy, các khởi động từ cắt → nên làm ban ngày.
+4. Chuyển LOGO! sang **RUN**, kiểm tra lại đồng hồ và các dòng K1/K2/K3.
 
-### Cách B – Từ máy tính bằng LOGO!Soft Comfort
-
-1. Nối cáp mạng máy tính với cổng Ethernet của LOGO!, mở LOGO!Soft Comfort và file NisseLOGOProgram_V2-ELR.lld.
-2. Vào **Tools → Transfer → Set Clock…**, chọn đúng LOGO! (theo địa chỉ IP).
-3. Lấy giờ theo máy tính (đảm bảo máy tính đang đúng giờ Việt Nam), hoặc nhập tay, rồi xác nhận gửi xuống LOGO!.
-4. Cách này **không làm LOGO! dừng chương trình**.
-
-### Giờ mùa hè/mùa đông (Summer/Winter time)
-
-Việt Nam không đổi giờ theo mùa. Kiểm tra mục **Clock → S/W Time** trên LOGO! (hoặc **Tools → Transfer → Summertime/Wintertime** trên Soft Comfort) phải để **Off**. Nếu để On (EU/US…), LOGO! sẽ tự nhảy 1 giờ vào tháng 3 và tháng 10, làm đèn bật/tắt lệch 1 giờ.
-
-### Đồng bộ giờ tự động (nếu tủ có mạng)
-
-LOGO! 8 hỗ trợ đồng bộ giờ qua mạng (NTP) trong mục Clock → Sync / cài đặt online trong Soft Comfort. Chỉ bật khi tủ có kết nối mạng ổn định và đặt múi giờ **UTC+7**.
-
-## 4. Chỉnh giờ bật/tắt đèn
-
-### 4.1 Xác định khối hẹn giờ trong chương trình
-
-Mở chương trình trong Soft Comfort, tìm các khối có biểu tượng đồng hồ (thường đặt tên B001, B002…):
-
-| Loại khối | Dùng để | Thông số chỉnh |
-|---|---|---|
-| Weekly Timer (hẹn giờ tuần) | Bật/tắt theo giờ cố định từng thứ trong tuần | Mỗi khối có 3 "Cam": ngày (D=), giờ bật (On), giờ tắt (Off) |
-| Yearly Timer (hẹn giờ năm) | Chạy theo khoảng ngày/tháng | Ngày bắt đầu, ngày kết thúc |
-| Astronomical Clock (đồng hồ thiên văn) | Bật theo hoàng hôn, tắt theo bình minh | Kinh độ, vĩ độ, múi giờ, độ lệch (offset) phút |
-
-Ghi lại: khối nào điều khiển ngõ ra nào (Q1 – đèn cả đêm, Q2 – đèn nửa đêm…) để chỉnh đúng khối.
-
-### 4.2 Chỉnh trên mặt LOGO! (không cần dừng chương trình)
-
-1. Khi LOGO! đang RUN, nhấn **ESC** → chọn **Set Param** → **OK**.
-2. Danh sách các khối cho phép chỉnh hiện ra. Dùng ▲▼ chọn khối hẹn giờ cần sửa (ví dụ B001) → **OK**.
-3. Với Weekly Timer, màn hình hiện Cam 1, dạng:
-    - `D=MTWTFSS` — các thứ có hiệu lực (M=Thứ Hai … S=Chủ nhật; dấu `–` là không chạy thứ đó)
-    - `On =18:00` — giờ bật
-    - `Off=05:30` — giờ tắt
-4. Dùng ◄► di chuyển con trỏ đến giá trị cần đổi, ▲▼ để thay đổi, **OK** để lưu.
-5. Chuyển sang Cam 2, Cam 3 (nhấn ▼/► sang trang kế tiếp) nếu khối dùng nhiều cam; làm tương tự.
-6. Nhấn ESC để về, quan sát ngõ ra Q tương ứng có đóng/cắt đúng không.
-
-> Nếu khối cần sửa **không có trong danh sách Set Param**, khối đó đang bị khóa chỉnh tham số (bảo vệ). Khi đó phải sửa bằng Soft Comfort theo mục 4.3.
-
-> Lưu ý giờ qua đêm: với Weekly Timer, đặt On=18:00, Off=05:30 vẫn chạy được qua 0 giờ; nhưng cột D= phải chọn đúng ngày bắt đầu bật (ví dụ chọn đủ 7 ngày để đêm nào cũng bật).
-
-### 4.3 Chỉnh bằng LOGO!Soft Comfort (khi cần sửa nhiều hoặc khối bị khóa)
-
-1. Nên **đọc chương trình đang chạy từ LOGO! về** trước (**Tools → Transfer → LOGO! → PC**) và lưu thành file mới có ngày tháng, để chắc chắn đang sửa đúng bản trong tủ.
-2. Nhấp đúp vào khối hẹn giờ cần sửa → thẻ **Parameter**.
-3. Weekly Timer: chọn Cam 1/2/3, tích các thứ, nhập giờ bật/tắt. Astronomical Clock: kiểm tra vị trí TP.HCM (vĩ độ khoảng 10,8° Bắc, kinh độ khoảng 106,7° Đông), múi giờ UTC+7, rồi chỉnh **offset** (phút) nếu muốn bật sớm/tắt muộn hơn giờ hoàng hôn/bình minh.
-4. Nhấn **OK**, lưu file (**File → Save As**, đặt tên có ngày, ví dụ `NisseLOGOProgram_V2-ELR_2026-11-09.lld`).
-5. Thử bằng chế độ mô phỏng (**Simulation**, phím F3) để xem đèn bật/tắt đúng giờ.
-6. Nạp xuống LOGO!: **Tools → Transfer → PC → LOGO!** (Ctrl+D), chọn LOGO! theo IP, đồng ý chuyển STOP.
-7. Sau khi nạp, chọn chuyển LOGO! sang **RUN**. Kiểm tra lại đồng hồ (mục 3) vì một số trường hợp cần đặt lại.
+Sửa trên mặt LOGO! thì file trên máy tính không tự cập nhật. Sau khi chỉnh tại tủ, nên đọc chương trình về lưu lại để hồ sơ khớp với thực tế.
 
 ## 5. Kiểm tra sau khi chỉnh
 
-- Màn hình LOGO! hiển thị đúng thứ, ngày, giờ Việt Nam.
-- S/W Time = Off.
-- Thông số từng khối hẹn giờ đúng lịch mới (đối chiếu ảnh chụp trước/sau).
-- Theo dõi ít nhất 1 lần bật (chiều tối) và 1 lần tắt (sáng sớm) đầu tiên: đèn đóng/cắt đúng giờ, đúng nhánh (cả đêm/nửa đêm).
-- Ghi sổ nhật ký tủ: ngày chỉnh, người chỉnh, giờ cũ → giờ mới, lý do.
-
-## 6. Sự cố thường gặp
-
-| Hiện tượng | Nguyên nhân hay gặp | Cách xử lý |
-|---|---|---|
-| Đèn bật/tắt lệch đúng 1 giờ | S/W Time đang bật | Đặt S/W Time = Off (mục 3) |
-| Sau mất điện lâu, giờ bị sai/về mặc định | Hết thời gian lưu đồng hồ khi mất nguồn | Đặt lại đồng hồ; cân nhắc lắp module pin/đồng bộ NTP |
-| Không thấy khối trong Set Param | Khối bị bảo vệ tham số | Sửa bằng Soft Comfort (mục 4.3) |
-| Sửa trên máy tính xong nhưng tủ không đổi | Chưa nạp xuống hoặc nạp sai LOGO! (sai IP) | Nạp lại, kiểm tra IP; đọc chương trình về để đối chiếu |
-| Đêm có đêm không bật | Cột D= chưa chọn đủ các thứ | Chọn đủ 7 ngày (MTWTFSS) |
-
-## 7. Đọc màn hình chính của tủ – ví dụ tủ LUC02
-
-Màn hình chính của LOGO! 230RCE (6ED1052-1FB08-0BA2) trong tủ hiển thị dạng:
-
-```
-2020-03-01 LUC02
-Su 00:00        0
-1 19:45 05:45   1
-2 17:46 05:45   1
-3 18:00 04:00
-www.LAVIPCO.TECH
-```
-
-| Dòng | Ý nghĩa (theo ảnh chụp thực tế tại tủ) |
-|---|---|
-| `2020-03-01 LUC02` | Ngày hiện tại của đồng hồ LOGO! và tên tủ |
-| `Su 00:00` | Thứ và giờ hiện tại của đồng hồ LOGO! |
-| `1 19:45 05:45` | Lịch mạch/nhánh 1: giờ bật – giờ tắt |
-| `2 17:46 05:45` | Lịch mạch/nhánh 2: giờ bật – giờ tắt |
-| `3 18:00 04:00` | Lịch mạch/nhánh 3: giờ bật – giờ tắt |
-
-> **Dấu hiệu đồng hồ đã mất giờ:** ngày hiện `2020-03-01` (hoặc một ngày cũ bất kỳ) và giờ đứng ở `00:00`. Đây là trạng thái sau khi LOGO! mất nguồn quá lâu (theo Siemens, LOGO! 8 giữ được giờ khoảng 20 ngày khi mất điện). Khi đó lịch bật/tắt vẫn còn nhưng tủ sẽ đóng/cắt sai giờ → **phải làm ngay mục 3 (chỉnh đồng hồ)**, sau đó đối chiếu lại các dòng 1–3 với lịch vận hành được duyệt.
+- Màn hình đúng ngày, giờ Việt Nam; S/W Time = Off.
+- Dòng K1/K2/K3 đúng lịch mới, thỏa quy tắc K1 – K2 ở mục 4.
+- Lần bật đầu tiên: K1 đóng đúng giờ, K2 đóng sau khoảng 30 giây (hoặc đúng giờ T002 nếu muộn hơn), K3 đúng giờ T006. Lần tắt đầu tiên đúng giờ.
+- Ghi sổ nhật ký tủ: ngày chỉnh, người chỉnh, giờ cũ → giờ mới.
