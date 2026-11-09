@@ -95,6 +95,7 @@ Không cần repo này. Mở browser → `http://<ip-plc>` → đăng nhập use
 
 - [docs/architecture.md](docs/architecture.md) — sơ đồ chi tiết, MQTT topic schema, DB schema, failure modes, scale-out.
 - [docs/de-xuat-ky-thuat.md](docs/de-xuat-ky-thuat.md) — bản đề xuất kỹ thuật trang trọng (50 trạm/12 tháng, ngân sách, ROI, KPI). [Có sẵn .docx](docs/de-xuat-ky-thuat.docx) để thuyết trình.
+- [docs/huong-dan-chinh-gio-logo.md](docs/huong-dan-chinh-gio-logo.md) — hướng dẫn chỉnh đồng hồ và giờ bật/tắt đèn trên LOGO! (chương trình NisseLOGOProgram_V2-ELR). [Bản HTML để xem/in](https://neo-era.github.io/plc-logo/docs/huong-dan-chinh-gio-logo.html).
 - [local-proxy/README.md](local-proxy/README.md) — hướng dẫn cài + auto-start Windows + troubleshoot.
 
 ---

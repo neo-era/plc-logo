@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hướng dẫn chỉnh giờ tủ điều khiển LOGO!</title>
+<style>
+body{font-family:"Times New Roman",Times,serif;font-size:17px;line-height:1.55;color:#1a1a1a;max-width:860px;margin:0 auto;padding:24px 18px;background:#fff}
+h1{font-size:24px;color:#0b3d6e;border-bottom:3px solid #0b3d6e;padding-bottom:8px}
+h2{font-size:20px;color:#0b3d6e;margin-top:30px;border-bottom:1px solid #c9d6e3;padding-bottom:4px}
+h3{font-size:18px;color:#1f5f99;margin-top:20px}
+table{border-collapse:collapse;width:100%;margin:12px 0}
+th,td{border:1px solid #9fb3c8;padding:7px 9px;vertical-align:top;text-align:left}
+th{background:#e8f0f8}
+code{background:#f1f4f7;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace;font-size:15px}
+blockquote{margin:12px 0;padding:8px 14px;background:#fff7e6;border-left:4px solid #f0a020}
+blockquote p{margin:0}
+li{margin:3px 0}
+@media print{body{max-width:none;padding:0;font-size:13pt}h2{page-break-after:avoid}table,blockquote{page-break-inside:avoid}}
+</style></head><body>
+<h1>Hướng dẫn chỉnh giờ tủ điều khiển LOGO! – chương trình NisseLOGOProgram_V2-ELR</h1>
+<p><em>Ngày lập: 09/11/2026</em></p>
+<h2>1. Phạm vi và lưu ý trước khi làm</h2>
+<ul>
+<li>Áp dụng cho tủ dùng bộ điều khiển Siemens LOGO! 8 (có đồng hồ thời gian thực) chạy chương trình <strong>NisseLOGOProgram_V2-ELR.lld</strong>, lập bằng LOGO!Soft Comfort V8.</li>
+<li>"Chỉnh giờ" gồm 2 việc khác nhau, cần phân biệt:<ul>
+<li><strong>Chỉnh đồng hồ của LOGO!</strong> (ngày, thứ, giờ hiện tại) — khi đồng hồ chạy sai, sau mất điện lâu, thay LOGO!.</li>
+<li><strong>Chỉnh giờ bật/tắt</strong> trong các khối hẹn giờ (Weekly Timer, Yearly Timer, Astronomical Clock) — khi cần đổi lịch đóng/cắt đèn.</li>
+</ul>
+</li>
+<li>Luôn chỉnh đồng hồ đúng trước, rồi mới kiểm tra giờ bật/tắt; đồng hồ sai thì lịch đúng vẫn đóng/cắt sai.</li>
+<li>Trước khi sửa: ghi lại (chụp ảnh màn hình LOGO!) toàn bộ thông số cũ để có thể trả lại khi cần.</li>
+<li>Khi nạp chương trình từ máy tính, LOGO! chuyển sang STOP, các ngõ ra Q sẽ cắt trong lúc nạp — chọn thời điểm ban ngày, báo trước cho đơn vị quản lý tuyến.</li>
+</ul>
+<h2>2. Phím bấm trên mặt LOGO!</h2>
+<table>
+<thead>
+<tr>
+<th>Phím</th>
+<th>Tác dụng</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESC</td>
+<td>Vào menu (khi đang RUN) / quay lại</td>
+</tr>
+<tr>
+<td>▲ ▼</td>
+<td>Chọn mục menu / tăng-giảm giá trị</td>
+</tr>
+<tr>
+<td>◄ ►</td>
+<td>Di chuyển con trỏ sang vị trí kế tiếp</td>
+</tr>
+<tr>
+<td>OK</td>
+<td>Xác nhận</td>
+</tr>
+</tbody>
+</table>
+<h2>3. Chỉnh đồng hồ thực của LOGO! (ngày, thứ, giờ)</h2>
+<h3>Cách A – Trên mặt LOGO! (không cần máy tính)</h3>
+<ol>
+<li>Khi LOGO! đang RUN, nhấn <strong>ESC</strong> để vào menu tham số.</li>
+<li>Dùng ▲▼ chọn <strong>Set..</strong> (đời LOGO! 8 có thể hiển thị là <strong>Setup</strong>), nhấn <strong>OK</strong>.</li>
+<li>Chọn <strong>Clock</strong> → <strong>OK</strong> → chọn <strong>Set Clock</strong> → <strong>OK</strong>.</li>
+<li>Màn hình hiện thứ, giờ và ngày (dạng <code>Mo 15:30</code> / <code>YYYY-MM-DD</code>). Con trỏ đứng ở ô thứ trong tuần.</li>
+<li>Dùng ▲▼ đổi giá trị, ◄► sang ô kế tiếp: thứ → giờ → phút → năm → tháng → ngày.</li>
+<li>Nhấn <strong>OK</strong> để lưu. Nhấn ESC nhiều lần để về màn hình chính, kiểm tra giờ hiển thị.</li>
+</ol>
+<h3>Cách B – Từ máy tính bằng LOGO!Soft Comfort</h3>
+<ol>
+<li>Nối cáp mạng máy tính với cổng Ethernet của LOGO!, mở LOGO!Soft Comfort và file NisseLOGOProgram_V2-ELR.lld.</li>
+<li>Vào <strong>Tools → Transfer → Set Clock…</strong>, chọn đúng LOGO! (theo địa chỉ IP).</li>
+<li>Lấy giờ theo máy tính (đảm bảo máy tính đang đúng giờ Việt Nam), hoặc nhập tay, rồi xác nhận gửi xuống LOGO!.</li>
+<li>Cách này <strong>không làm LOGO! dừng chương trình</strong>.</li>
+</ol>
+<h3>Giờ mùa hè/mùa đông (Summer/Winter time)</h3>
+<p>Việt Nam không đổi giờ theo mùa. Kiểm tra mục <strong>Clock → S/W Time</strong> trên LOGO! (hoặc <strong>Tools → Transfer → Summertime/Wintertime</strong> trên Soft Comfort) phải để <strong>Off</strong>. Nếu để On (EU/US…), LOGO! sẽ tự nhảy 1 giờ vào tháng 3 và tháng 10, làm đèn bật/tắt lệch 1 giờ.</p>
+<h3>Đồng bộ giờ tự động (nếu tủ có mạng)</h3>
+<p>LOGO! 8 hỗ trợ đồng bộ giờ qua mạng (NTP) trong mục Clock → Sync / cài đặt online trong Soft Comfort. Chỉ bật khi tủ có kết nối mạng ổn định và đặt múi giờ <strong>UTC+7</strong>.</p>
+<h2>4. Chỉnh giờ bật/tắt đèn</h2>
+<h3>4.1 Xác định khối hẹn giờ trong chương trình</h3>
+<p>Mở chương trình trong Soft Comfort, tìm các khối có biểu tượng đồng hồ (thường đặt tên B001, B002…):</p>
+<table>
+<thead>
+<tr>
+<th>Loại khối</th>
+<th>Dùng để</th>
+<th>Thông số chỉnh</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weekly Timer (hẹn giờ tuần)</td>
+<td>Bật/tắt theo giờ cố định từng thứ trong tuần</td>
+<td>Mỗi khối có 3 "Cam": ngày (D=), giờ bật (On), giờ tắt (Off)</td>
+</tr>
+<tr>
+<td>Yearly Timer (hẹn giờ năm)</td>
+<td>Chạy theo khoảng ngày/tháng</td>
+<td>Ngày bắt đầu, ngày kết thúc</td>
+</tr>
+<tr>
+<td>Astronomical Clock (đồng hồ thiên văn)</td>
+<td>Bật theo hoàng hôn, tắt theo bình minh</td>
+<td>Kinh độ, vĩ độ, múi giờ, độ lệch (offset) phút</td>
+</tr>
+</tbody>
+</table>
+<p>Ghi lại: khối nào điều khiển ngõ ra nào (Q1 – đèn cả đêm, Q2 – đèn nửa đêm…) để chỉnh đúng khối.</p>
+<h3>4.2 Chỉnh trên mặt LOGO! (không cần dừng chương trình)</h3>
+<ol>
+<li>Khi LOGO! đang RUN, nhấn <strong>ESC</strong> → chọn <strong>Set Param</strong> → <strong>OK</strong>.</li>
+<li>Danh sách các khối cho phép chỉnh hiện ra. Dùng ▲▼ chọn khối hẹn giờ cần sửa (ví dụ B001) → <strong>OK</strong>.</li>
+<li>Với Weekly Timer, màn hình hiện Cam 1, dạng:<ul>
+<li><code>D=MTWTFSS</code> — các thứ có hiệu lực (M=Thứ Hai … S=Chủ nhật; dấu <code>–</code> là không chạy thứ đó)</li>
+<li><code>On =18:00</code> — giờ bật</li>
+<li><code>Off=05:30</code> — giờ tắt</li>
+</ul>
+</li>
+<li>Dùng ◄► di chuyển con trỏ đến giá trị cần đổi, ▲▼ để thay đổi, <strong>OK</strong> để lưu.</li>
+<li>Chuyển sang Cam 2, Cam 3 (nhấn ▼/► sang trang kế tiếp) nếu khối dùng nhiều cam; làm tương tự.</li>
+<li>Nhấn ESC để về, quan sát ngõ ra Q tương ứng có đóng/cắt đúng không.</li>
+</ol>
+<blockquote>
+<p>Nếu khối cần sửa <strong>không có trong danh sách Set Param</strong>, khối đó đang bị khóa chỉnh tham số (bảo vệ). Khi đó phải sửa bằng Soft Comfort theo mục 4.3.</p>
+<p>Lưu ý giờ qua đêm: với Weekly Timer, đặt On=18:00, Off=05:30 vẫn chạy được qua 0 giờ; nhưng cột D= phải chọn đúng ngày bắt đầu bật (ví dụ chọn đủ 7 ngày để đêm nào cũng bật).</p>
+</blockquote>
+<h3>4.3 Chỉnh bằng LOGO!Soft Comfort (khi cần sửa nhiều hoặc khối bị khóa)</h3>
+<ol>
+<li>Nên <strong>đọc chương trình đang chạy từ LOGO! về</strong> trước (<strong>Tools → Transfer → LOGO! → PC</strong>) và lưu thành file mới có ngày tháng, để chắc chắn đang sửa đúng bản trong tủ.</li>
+<li>Nhấp đúp vào khối hẹn giờ cần sửa → thẻ <strong>Parameter</strong>.</li>
+<li>Weekly Timer: chọn Cam 1/2/3, tích các thứ, nhập giờ bật/tắt. Astronomical Clock: kiểm tra vị trí TP.HCM (vĩ độ khoảng 10,8° Bắc, kinh độ khoảng 106,7° Đông), múi giờ UTC+7, rồi chỉnh <strong>offset</strong> (phút) nếu muốn bật sớm/tắt muộn hơn giờ hoàng hôn/bình minh.</li>
+<li>Nhấn <strong>OK</strong>, lưu file (<strong>File → Save As</strong>, đặt tên có ngày, ví dụ <code>NisseLOGOProgram_V2-ELR_2026-11-09.lld</code>).</li>
+<li>Thử bằng chế độ mô phỏng (<strong>Simulation</strong>, phím F3) để xem đèn bật/tắt đúng giờ.</li>
+<li>Nạp xuống LOGO!: <strong>Tools → Transfer → PC → LOGO!</strong> (Ctrl+D), chọn LOGO! theo IP, đồng ý chuyển STOP.</li>
+<li>Sau khi nạp, chọn chuyển LOGO! sang <strong>RUN</strong>. Kiểm tra lại đồng hồ (mục 3) vì một số trường hợp cần đặt lại.</li>
+</ol>
+<h2>5. Kiểm tra sau khi chỉnh</h2>
+<ul>
+<li>Màn hình LOGO! hiển thị đúng thứ, ngày, giờ Việt Nam.</li>
+<li>S/W Time = Off.</li>
+<li>Thông số từng khối hẹn giờ đúng lịch mới (đối chiếu ảnh chụp trước/sau).</li>
+<li>Theo dõi ít nhất 1 lần bật (chiều tối) và 1 lần tắt (sáng sớm) đầu tiên: đèn đóng/cắt đúng giờ, đúng nhánh (cả đêm/nửa đêm).</li>
+<li>Ghi sổ nhật ký tủ: ngày chỉnh, người chỉnh, giờ cũ → giờ mới, lý do.</li>
+</ul>
+<h2>6. Sự cố thường gặp</h2>
+<table>
+<thead>
+<tr>
+<th>Hiện tượng</th>
+<th>Nguyên nhân hay gặp</th>
+<th>Cách xử lý</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Đèn bật/tắt lệch đúng 1 giờ</td>
+<td>S/W Time đang bật</td>
+<td>Đặt S/W Time = Off (mục 3)</td>
+</tr>
+<tr>
+<td>Sau mất điện lâu, giờ bị sai/về mặc định</td>
+<td>Hết thời gian lưu đồng hồ khi mất nguồn</td>
+<td>Đặt lại đồng hồ; cân nhắc lắp module pin/đồng bộ NTP</td>
+</tr>
+<tr>
+<td>Không thấy khối trong Set Param</td>
+<td>Khối bị bảo vệ tham số</td>
+<td>Sửa bằng Soft Comfort (mục 4.3)</td>
+</tr>
+<tr>
+<td>Sửa trên máy tính xong nhưng tủ không đổi</td>
+<td>Chưa nạp xuống hoặc nạp sai LOGO! (sai IP)</td>
+<td>Nạp lại, kiểm tra IP; đọc chương trình về để đối chiếu</td>
+</tr>
+<tr>
+<td>Đêm có đêm không bật</td>
+<td>Cột D= chưa chọn đủ các thứ</td>
+<td>Chọn đủ 7 ngày (MTWTFSS)</td>
+</tr>
+</tbody>
+</table>
+</body></html>
