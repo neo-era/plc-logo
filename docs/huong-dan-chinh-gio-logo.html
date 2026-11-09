@@ -10,7 +10,7 @@ h3{font-size:18px;color:#1f5f99;margin-top:20px}
 table{border-collapse:collapse;width:100%;margin:12px 0}
 th,td{border:1px solid #9fb3c8;padding:7px 9px;vertical-align:top;text-align:left}
 th{background:#e8f0f8}
-code{background:#f1f4f7;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace;font-size:15px}
+pre{background:#f1f4f7;padding:10px 12px;border-radius:4px;overflow-x:auto}pre code{padding:0}code{background:#f1f4f7;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace;font-size:15px}
 blockquote{margin:12px 0;padding:8px 14px;background:#fff7e6;border-left:4px solid #f0a020}
 blockquote p{margin:0}
 li{margin:3px 0}
@@ -55,11 +55,12 @@ li{margin:3px 0}
 </table>
 <p>Giờ trong bảng là cài đặt gốc trong file chương trình. Mỗi khối chỉ dùng <strong>Cam 1 (No1)</strong>; Cam 2, Cam 3 để trống.</p>
 <h2>2. Kiểm tra trên màn hình tủ</h2>
-<p><code>2020-03-01  LVC02      ← ngày hiện tại – tên tủ
+<pre><code>2020-03-01  LVC02      ← ngày hiện tại – tên tủ
 00:00             0    ← giờ hiện tại – (số lần ELR tác động)
 K1: 17:45  05:45  1    ← T001: bật – tắt – trạng thái K1 (1 = đang đóng)
 K2: 17:46  05:45  1    ← T002: bật – tắt – trạng thái K2
-K3: 22:00  04:00       ← T006: bật – tắt</code></p>
+K3: 22:00  04:00       ← T006: bật – tắt
+</code></pre>
 <ul>
 <li>Dòng 1–2 sai ngày/giờ (ví dụ <code>2020-03-01</code>, <code>00:00</code>) → đồng hồ đã mất giờ, đèn sẽ đóng/cắt sai, có thể sáng cả ban ngày → làm <strong>mục 3</strong>.</li>
 <li>Dòng K1/K2/K3 cần đổi lịch → làm <strong>mục 4</strong>.</li>
