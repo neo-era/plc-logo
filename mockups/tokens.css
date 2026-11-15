@@ -1,0 +1,19 @@
+:root{--bg:#f4f6fa;--surface:#fff;--surface2:#eef1f6;--text:#0f172a;--muted:#5b6476;--line:#e2e7ef;
+--brand:#0b6bcb;--brand-ink:#fff;--on:#16a34a;--on-bg:#dcfce7;--off:#64748b;--off-bg:#e9edf3;--warn:#d97706;--warn-bg:#fef3c7;--err:#dc2626;--err-bg:#fee2e2;
+--r:14px;--r-sm:10px;--sh:0 1px 2px rgba(15,23,42,.06),0 4px 14px rgba(15,23,42,.06);--font:Inter,"Be Vietnam Pro",system-ui,sans-serif}
+.dark{--bg:#0b1220;--surface:#121b2d;--surface2:#1a2539;--text:#e6ebf4;--muted:#93a0b8;--line:#24324a;--brand:#4aa3ff;--brand-ink:#04121f;
+--on:#4ade80;--on-bg:#11331f;--off:#94a3b8;--off-bg:#1e293b;--warn:#fbbf24;--warn-bg:#3a2a0b;--err:#f87171;--err-bg:#3b1414;--sh:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35)}
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased}
+.app{height:100dvh;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.top{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+.back{width:44px;height:44px;border-radius:12px;border:0;background:var(--surface2);color:var(--text);font-size:22px}
+.title{font-weight:700;font-size:17px}.sub{color:var(--muted);font-size:12.5px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600}
+.pill.on{background:var(--on-bg);color:var(--on)}.pill.off{background:var(--off-bg);color:var(--off)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.brand{background:color-mix(in srgb,var(--brand) 15%,transparent);color:var(--brand)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+.btn{min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text);font:600 15px var(--font);padding:0 14px}
+.btn.primary{background:var(--brand);color:var(--brand-ink);border-color:transparent}
+.mono{font-variant-numeric:tabular-nums}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));background:var(--text);color:var(--bg);padding:10px 14px;border-radius:12px;font-size:13.5px;box-shadow:var(--sh);white-space:nowrap}
