@@ -110,7 +110,6 @@ function nightMinutesBetween(from, to, sun) {
 function validateOverride(o, now, sun, nightOffUsedMin = 0) {
   if (!Number.isFinite(now) || !sun) return { ok: false, code: 'BAD_INPUT' };
   if (!o || !CIRCUITS.includes(o.circuit) || !['on', 'off', 'auto'].includes(o.mode)) return { ok: false, code: 'BAD' };
-  if (o.circuit === 'K3') return { ok: false, code: 'K3_VIEW_ONLY' };
   if (o.mode === 'auto') return { ok: true, notifyGroup: false };
   if (!Number.isFinite(o.until) || o.until <= now) return { ok: false, code: 'EXPIRED' };
   if (o.until - now > MAX_FORCE) return { ok: false, code: 'TOO_LONG' };
@@ -222,7 +221,9 @@ function step(prev, inp) {
   const nightKey = Math.floor((now / MIN + VN_OFFSET - 720) / DAY);
   if (st.night.key !== nightKey) st.night = { key: nightKey, offMin: 0, lastAt: now };
   else {
-    if (forced.K1 && !req.K1 && isNight(minute, inp.sun || { sunrise: 360, sunset: 1050 }) && Number.isFinite(st.night.lastAt)) st.night.offMin += Math.max(0, (now - st.night.lastAt) / MIN);
+    // một phút được tính khi có ít nhất một mạch bị tắt cưỡng bức trong lúc lịch của nó đang bật (đêm)
+    const forcedDark = CIRCUITS.some(c => forced[c] && !req[c] && sched[c]);
+    if (forcedDark && isNight(minute, inp.sun || { sunrise: 360, sunset: 1050 }) && Number.isFinite(st.night.lastAt)) st.night.offMin += Math.max(0, (now - st.night.lastAt) / MIN);
     st.night.lastAt = now;
   }
   st.req = req;

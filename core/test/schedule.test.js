@@ -84,7 +84,9 @@ test('cưỡng bức: hạn mặc định, tối đa 12 h, tắt ban đêm tối
   r = S.validateOverride({ circuit: 'K1', mode: 'on', until: at(20, 0) - MIN }, at(20, 0), SUN);
   assert.equal(r.ok, false); assert.equal(r.code, 'EXPIRED');
   r = S.validateOverride({ circuit: 'K3', mode: 'on', until: at(20, 30) }, at(20, 0), SUN);
-  assert.equal(r.ok, false); assert.equal(r.code, 'K3_VIEW_ONLY');
+  assert.equal(r.ok, true, 'K3 điều khiển được (anh Lâm chốt 16/11/2026)');
+  r = S.validateOverride({ circuit: 'K3', mode: 'off', until: at(23, 0) + 60e3 }, at(23, 0) - 120 * MIN, SUN);
+  assert.equal(r.ok, false); assert.equal(r.code, 'NIGHT_OFF_TOO_LONG');
 });
 
 // ── bộ quyết định tầng (reducer thuần) ────────────────────
@@ -182,4 +184,22 @@ test('dấu thời gian tương lai trong state bị bỏ ở bước kế tiế
   const r = S.step(st, baseIn(at(22, 30)));
   assert.equal(r.state.k3OffSince, null); assert.equal(r.state.maintAt, null); assert.equal(r.state.flips.K1.length, 0);
   assert.equal(r.out.req.K3, true);
+});
+
+test('K3 cưỡng bức: bật ban ngày được nhưng vẫn qua khoá nguội 15′; tắt ban đêm cộng dồn vào giới hạn 2 h', () => {
+  // K3 đang sáng 22:30, cưỡng bức tắt 5′ rồi cưỡng bức bật lại → phải chờ đủ 15′ kể từ lúc tắt
+  let st = S.initialState();
+  st = S.step(st, baseIn(at(22, 30), { plcQ: { K1: true, K2: true, K3: true } })).state;
+  st = S.step(st, baseIn(at(22, 31), { overrides: { K3: { mode: 'off', until: at(22, 36), setAt: at(22, 31) } }, plcQ: { K1: true, K2: true, K3: true } })).state;
+  let r = S.step(st, baseIn(at(22, 32), { overrides: { K3: { mode: 'off', until: at(22, 36), setAt: at(22, 31) } }, plcQ: { K1: true, K2: true, K3: false } }));
+  st = r.state; assert.equal(r.out.req.K3, false);
+  r = S.step(st, baseIn(at(22, 40), { overrides: { K3: { mode: 'on', until: at(23, 0), setAt: at(22, 40) } }, plcQ: { K1: true, K2: true, K3: false } }));
+  assert.equal(r.out.req.K3, false); assert.ok(r.out.reasons.includes('K3_COOLDOWN'));
+  r = S.step(r.state, baseIn(at(22, 48), { overrides: { K3: { mode: 'on', until: at(23, 0), setAt: at(22, 40) } }, plcQ: { K1: true, K2: true, K3: false } }));
+  assert.equal(r.out.req.K3, true);
+  // phút tắt cưỡng bức K3 trong lúc lịch K3 bật được cộng dồn
+  let s2 = S.initialState();
+  const ov = { K3: { mode: 'off', until: at(23, 30), setAt: at(22, 30) } };
+  for (let m = 30; m <= 60; m += 5) s2 = S.step(s2, baseIn(at(22, m), { overrides: ov })).state;
+  assert.ok(Math.abs(s2.night.offMin - 30) < 0.01, 'offMin=' + s2.night.offMin);
 });

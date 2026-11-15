@@ -110,8 +110,8 @@ test('C3 issuedAt ở tương lai xa → lệnh sống mãi', () => {
   const r = C.accept(cmd({ issuedAt: NOW + 864e5, expiresAt: NOW + 864e5 + 30e3 }), ctx());
   assert.notEqual(r.status, 'received');
 });
-test('C4 lệnh cưỡng bức K3 / until đã qua / tắt đêm 10 h vẫn received tại gateway', () => {
-  assert.notEqual(C.accept(cmd({ circuit: 'K3' }), ctx()).status, 'received', 'K3');
+test('C4 lệnh until đã qua / until == now không được received; K3 nay điều khiển được (chốt 16/11/2026)', () => {
+  assert.equal(C.accept(cmd({ circuit: 'K3' }), ctx()).status, 'received', 'K3');
   assert.notEqual(C.accept(cmd({ until: NOW - 1 }), ctx()).status, 'received', 'until quá khứ');
   assert.notEqual(C.accept(cmd({ until: NOW }), ctx()).status, 'received', 'until == now');
 });

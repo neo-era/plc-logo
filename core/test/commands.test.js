@@ -65,8 +65,9 @@ test('B7: từ chối khi khoá ELR (lệnh bật), khi REMOTE_OK = 0, khi đã 
   assert.equal(C.accept(cmd({ mode: 'auto', until: undefined }), ctx({ flipsLastHour: { K1: 4 } })).status, 'received');
 });
 
-test('B7: gateway chạy lại validateOverride — K3 chỉ xem, tắt đêm > 2 h bị chặn, báo nhóm khi tắt đêm', () => {
-  assert.equal(C.accept(cmd({ circuit: 'K3' }), ctx()).reason, 'OVERRIDE_K3_VIEW_ONLY');
+test('B7: gateway chạy lại validateOverride — K3 điều khiển được như K1/K2, tắt đêm > 2 h bị chặn, báo nhóm khi tắt đêm', () => {
+  assert.equal(C.accept(cmd({ circuit: 'K3' }), ctx()).status, 'received');
+  assert.equal(C.accept(cmd({ circuit: 'K3', until: NOW + 13 * 3600e3 }), ctx()).reason, 'OVERRIDE_TOO_LONG');
   const night = Date.UTC(2026, 10, 15, 13, 0);   // 20:00 VN
   const c = { issuedAt: night - 1000, expiresAt: night + 29000 };
   assert.equal(C.accept(cmd({ ...c, mode: 'off', until: night + 3 * 3600e3 }), ctx({ now: night })).reason, 'OVERRIDE_NIGHT_OFF_TOO_LONG');
