@@ -23,7 +23,7 @@ function buildApp({ service, broker, db, jwtSecret, trustedProxies = ['172.30.0.
     // thu hồi tức thì: tài khoản bị khoá / đổi mật khẩu (token_version) → từ chối
     const u = (await db.query('select is_active, token_version from core.users where id::text = $1', [c.sub])).rows[0];
     if (!u || !u.is_active || Number(u.token_version) !== Number(c.ver)) return null;
-    return { id: c.sub, role, email: c.email };
+    return { id: c.sub, role, email: c.email, name: typeof c.name === 'string' ? c.name.slice(0, 60) : (c.email || c.sub) };
   }
 
   app.addHook('onRequest', async (req, reply) => {
@@ -53,6 +53,14 @@ function buildApp({ service, broker, db, jwtSecret, trustedProxies = ['172.30.0.
     return { id: st.id, name: st.name, online: st.online, state: st.last_state, stateAt: st.last_state_at, schedule: st.schedule };
   });
   app.post('/plc/stations/:id/commands', async (req, reply) => reply.code(202).send(await service.issueCommand(req.user, sid(req), req.body)));
+  const fbRate = new Map();
+  app.post('/plc/feedback', async (req, reply) => {
+    if (!req.user) throw new HttpError(401, 'UNAUTHORIZED');
+    const h = Math.floor(Date.now() / 3600e3), k = req.user.id + ':' + h, n = (fbRate.get(k) || 0) + 1;
+    if (fbRate.size > 5000) fbRate.clear();
+    fbRate.set(k, n); if (n > 20) throw new HttpError(429, 'FEEDBACK_RATE_LIMIT');
+    return reply.code(201).send(await service.addFeedback(req.user, req.body));
+  });
   app.put('/plc/stations/:id/schedule', async req => service.setSchedule(req.user, sid(req), req.body));
   app.get('/plc/stations/:id/commands', async req => service.commandLog(req.user, sid(req), Number(req.query.limit) || 50));
   app.get('/plc/stations/:id/alerts', async req => {

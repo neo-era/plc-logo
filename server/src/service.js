@@ -18,7 +18,7 @@ const ACK_STATUSES = ['received', 'applied', 'confirmed', 'failed', 'expired', '
 const sunAt = now => { const d = new Date(now + 7 * 3600e3); return sunTimes(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()); };
 class HttpError extends Error { constructor(status, code, extra) { super(code); this.status = status; this.code = code; this.extra = extra; } }
 
-function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
+function createService({ db, publish, zalo, fallback = null, now = Date.now, log = () => {} }) {
   const listeners = new Set();                 // WS app: (event) => void
   const alertState = new Map();                // stationId → state lõi cảnh báo
   const lastHistory = new Map();
@@ -66,9 +66,14 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
       const res = zalo ? await zalo.sendMessage(r.chat_id, text) : { ok: false, error: 'NO_ZALO' };
       delivery.push({ to: r.chat_id, type: r.chat_type, ok: res.ok, error: res.error });
     }
+    let failed = delivery.length === 0 || delivery.every(d => !d.ok);
+    if (failed && fallback && fallback.enabled) {           // T7: Zalo lỗi → gửi qua Telegram
+      const fr = await fallback.send(text).catch(e => ({ ok: false, error: e.message }));
+      delivery.push({ to: 'telegram', type: 'FALLBACK', ok: fr.ok, error: fr.error });
+      if (fr.ok) failed = false;
+    }
     await q('insert into plc.alerts(station_id, code, type, message, at, delivery) values ($1,$2,$3,$4,$5,$6)',
       [st.id, ev.code, ev.type, text, new Date(now()), JSON.stringify(delivery)]);
-    const failed = delivery.length === 0 || delivery.every(d => !d.ok);
     emit({ type: 'alert', stationId: st.id, code: ev.code, kind: ev.type, message: text, deliveryFailed: failed });
     if (failed) log('alert delivery failed', st.id, ev.code);
   }
@@ -97,7 +102,7 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
   }
 
   /** Trạng thái đệm khi gateway mất MQTT: chỉ ghi lịch sử (không đổi trạng thái hiện tại), tối đa 500 mẫu/lần kết nối. */
-  const histCount = new Map(), histDaily = new Map();
+  const histCount = new Map(), histDaily = new Map(), expiringWarned = new Set();
   async function onHist(stationId, msg) {
     const items = Array.isArray(msg?.items) ? msg.items.slice(0, 20) : [];
     for (const it of items) {
@@ -122,9 +127,14 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
         JSON.stringify({ notifyGroup: !!ack.notifyGroup })]);
     emit({ type: 'ack', stationId, cmdId: ack.cmdId, status: ack.status, reason: ack.reason || null });
     const st = await getStation(stationId);
-    if (ack.status === 'failed') await runAlerts(st, st.last_state, { cmdFailed: true });
+    const detail = { circuit: c.circuit, mode: c.mode, by: c.issued_by_name || c.issued_by, note: c.note,
+      until: c.until_at ? new Date(c.until_at).getTime() : null, usedMin: Number(st.last_state && st.last_state.nightOffMin) || 0 };
+    if (ack.status === 'failed') {
+      await runAlerts(st, st.last_state, { cmdFailed: true });
+      await deliver(st, { type: 'raise', code: 'CMD_FAILED', at: now(), detail });
+    }
     if (ack.status === 'received' && ack.notifyGroup) {
-      await deliver(st, { type: 'raise', code: 'FORCED_NIGHT_OFF' });
+      await deliver(st, { type: 'raise', code: 'FORCED_NIGHT_OFF', at: now(), detail });
     }
   }
 
@@ -149,6 +159,15 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
     if (t - lastPurge > 3600e3) { lastPurge = t; await q('delete from plc.state_history where at < $1', [new Date(t - HISTORY_DAYS * 864e5)]); }
     const rows = (await q('select * from plc.stations')).rows;
     for (const st of rows) {
+      const ov = (st.last_state && st.last_state.overrides) || {};
+      for (const c of ['K1', 'K2', 'K3']) {
+        const o = ov[c]; if (!o || o.mode !== 'off' || !Number.isFinite(o.until)) continue;
+        const left = o.until - t, key = st.id + c + o.until;
+        if (left > 0 && left <= 10 * 60e3 && !expiringWarned.has(key) && o.notifyGroup) {
+          expiringWarned.add(key);
+          await deliver(st, { type: 'raise', code: 'FORCED_EXPIRING', at: t, detail: { circuit: c, until: o.until } });
+        }
+      }
       const stale = !st.last_state_at || now() - new Date(st.last_state_at).getTime() > STALE_MS;
       if (stale || !st.online) await runAlerts(st, st.last_state);
     }
@@ -171,16 +190,21 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
       if (ls.elrLock && mode === 'on') throw new HttpError(409, 'ELR_LOCK');
       if (ls.flips && ls.flips[circuit] >= 4) throw new HttpError(429, 'RATE_LIMIT');
       if (circuit === 'K2' && mode === 'on' && !(ls.req && ls.req.K1)) throw new HttpError(409, 'K2_NEEDS_K1');
+      if (circuit === 'K3' && mode === 'on' && Number.isFinite(ls.k3CooldownUntil) && ls.k3CooldownUntil > t) {
+        throw new HttpError(409, 'K3_COOLDOWN', { until: ls.k3CooldownUntil, minutes: Math.ceil((ls.k3CooldownUntil - t) / 60e3) });
+      }
+      // tắt ban đêm: bắt buộc lý do (≥ 5 ký tự) — gửi kèm tin Zalo cho nhóm trực
+      if (v.notifyGroup && !(typeof body.note === 'string' && body.note.trim().length >= 5)) throw new HttpError(422, 'NOTE_REQUIRED');
     }
     const seq = Number((await q('update plc.stations set next_seq = next_seq + 1 where id = $1 returning next_seq - 1 as seq', [stationId])).rows[0].seq);
     const cmd = {
       cmdId: crypto.randomUUID(), seq, stationId, kind: 'override', circuit, mode,
       ...(until ? { until } : {}), issuedAt: t, expiresAt: t + CMD_TTL, by: user.id,
     };
-    await q(`insert into plc.commands(cmd_id, station_id, seq, circuit, mode, until_at, issued_at, expires_at, issued_by, note)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    await q(`insert into plc.commands(cmd_id, station_id, seq, circuit, mode, until_at, issued_at, expires_at, issued_by, issued_by_name, note)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [cmd.cmdId, stationId, seq, circuit, mode, until ? new Date(until) : null, new Date(t), new Date(cmd.expiresAt), user.id,
-        typeof body.note === 'string' ? body.note.slice(0, 300) : null]);
+        user.name || user.id, typeof body.note === 'string' ? body.note.trim().slice(0, 300) : null]);
     await q(`insert into plc.command_events(cmd_id, status, at) values ($1,'issued',$2)`, [cmd.cmdId, new Date(t)]);
     await publish(`lvc/${stationId}/cmd`, cmd, { retain: false });
     return cmd;
@@ -206,6 +230,20 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
     return { schedule: sched, warnings: v.warnings };
   }
 
+  const FB_KINDS = ['de_xuat', 'loi_app', 'sai_du_lieu', 'khac'];
+  async function addFeedback(user, body) {
+    const stars = body?.stars == null ? null : Number(body.stars);
+    const content = typeof body?.content === 'string' ? body.content.trim().slice(0, 2000) : '';
+    if (stars !== null && !(Number.isInteger(stars) && stars >= 1 && stars <= 5)) throw new HttpError(400, 'BAD_STARS');
+    if (stars === null && !content) throw new HttpError(400, 'EMPTY_FEEDBACK');
+    const kind = FB_KINDS.includes(body?.kind) ? body.kind : 'khac';
+    const str = (x, n) => (typeof x === 'string' ? x.slice(0, n) : null);
+    const r = await q(`insert into plc.feedback(user_id, station_id, stars, kind, content, app_build, device, screen)
+                       values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+      [user.id, str(body.stationId, 32), stars, kind, content || null, str(body.build, 40), str(body.device, 120), str(body.screen, 40)]);
+    return { id: Number(r.rows[0].id) };
+  }
+
   async function listStations(user) {
     const sql = user.role === 'admin'
       ? 'select id, name, online, last_state, last_state_at, schedule from plc.stations order by id'
@@ -221,8 +259,8 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
     return rows;
   }
 
-  return { onState, onAck, onHist, onOnline, sweep, issueCommand, setSchedule, listStations, commandLog, requireAccess, canAccess,
-    getStation, listeners, HttpError };
+  return { addFeedback, onState, onAck, onHist, onOnline, sweep, issueCommand, setSchedule, listStations, commandLog, requireAccess, canAccess,
+    getStation, runAlerts, listeners, HttpError };
 }
 
 module.exports = { createService, HttpError };

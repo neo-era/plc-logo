@@ -40,16 +40,18 @@ async function stack() {
   const plc = new LogoV4({ clock: vn(20) }); plc.run(1000);
   const clock = () => plc.clock;
   const zaloSent = [];
-  const zalo = { sendMessage: async (chat, text) => { zaloSent.push({ chat, text }); return { ok: true }; } };
+  const zaloCtl = { down: false }, tgSent = [];
+  const zalo = { sendMessage: async (chat, text) => { if (zaloCtl.down) return { ok: false, error: 'HTTP_500' }; zaloSent.push({ chat, text }); return { ok: true }; } };
+  const fallback = { enabled: true, send: async text => { tgSent.push(text); return { ok: true }; } };
   let brokerRef;
-  const service = createService({ db: pool, publish: (t, o, opt) => brokerRef.publish(t, o, opt), zalo, now: clock });
+  const service = createService({ db: pool, publish: (t, o, opt) => brokerRef.publish(t, o, opt), zalo, fallback, now: clock });
   brokerRef = await createBroker({ trustedProxies: ['127.0.0.1'], getStation: id => service.getStation(id), onState: (i, s) => service.onState(i, s),
     onAck: (i, a) => service.onAck(i, a), onOnline: (i, o) => service.onOnline(i, o) });
   const app = buildApp({ service, broker: brokerRef, db: pool, jwtSecret: SECRET, zaloWebhookSecret: 's'.repeat(32), trustedProxies: ['127.0.0.1'] });
   await app.listen({ host: '127.0.0.1', port: 0 });
   const base = `http://127.0.0.1:${app.server.address().port}`;
   const api = async (method, url, tok, body) => {
-    const headers = { Authorization: `Bearer ${tok}`, Origin: 'https://neo-era.github.io', ...(body ? { 'Content-Type': 'application/json' } : {}) };
+    const headers = { ...(tok ? { Authorization: `Bearer ${tok}` } : {}), Origin: 'https://neo-era.github.io', ...(body ? { 'Content-Type': 'application/json' } : {}) };
     const r = await fetch(base + url, { method, headers,
       body: body ? JSON.stringify(body) : undefined });
     return { status: r.status, body: await r.json().catch(() => null) };
@@ -70,7 +72,7 @@ async function stack() {
   const advance = async ms => { const end = plc.clock + ms; while (plc.clock < end) { plc.run(1000); await gw.tick(); await sleep(2); } };
   const until = async (fn, ms = 60e3) => { const end = plc.clock + ms; while (plc.clock < end) { if (await fn()) return true; await advance(1000); } return false; };
   const stop = async () => { mqtt.client.end(true); modbus.close(); mb.close(); await app.close(); await brokerRef.close(); await pool.end(); };
-  return { viaCaddy, pool, plc, service, broker: brokerRef, app, api, base, gw, mqtt, advance, until, stop, zaloSent, key: created.body.gatewayKey, created };
+  return { zaloCtl, tgSent, viaCaddy, pool, plc, service, broker: brokerRef, app, api, base, gw, mqtt, advance, until, stop, zaloSent, key: created.body.gatewayKey, created };
 }
 
 test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
@@ -88,7 +90,9 @@ test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
     });
 
     await t.test('ra lệnh tắt K1 → issued, received, applied, confirmed; PLC tắt K1; báo nhóm vì tắt đêm', async () => {
-      const r = await s.api('POST', '/plc/stations/LVC02/commands', token('lam', 'editor'), { circuit: 'K1', mode: 'off', minutes: 10 });
+      const noNote = await s.api('POST', '/plc/stations/LVC02/commands', token('lam', 'editor'), { circuit: 'K1', mode: 'off', minutes: 10 });
+      assert.equal(noNote.body.error, 'NOTE_REQUIRED', 'tắt đêm phải có lý do');
+      const r = await s.api('POST', '/plc/stations/LVC02/commands', token('lam', 'editor'), { circuit: 'K1', mode: 'off', minutes: 10, note: 'Thay cáp ngầm trụ 12' });
       assert.equal(r.status, 202, JSON.stringify(r.body));
       const id = r.body.cmdId;
       const ok = await s.until(async () => (await s.pool.query(`select 1 from plc.command_events where cmd_id = $1 and status = 'confirmed'`, [id])).rowCount > 0, 30e3);
@@ -97,7 +101,10 @@ test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
       const ev = (await s.pool.query('select status from plc.command_events where cmd_id = $1 order by id', [id])).rows.map(x => x.status);
       assert.deepEqual(ev, ['issued', 'received', 'applied', 'confirmed']);
       assert.equal(s.plc.Q[2], false);
-      assert.ok(s.zaloSent.some(z => z.chat === 'nhom-truc'), 'báo nhóm khi tắt đêm');
+      const zm = s.zaloSent.find(z => z.chat === 'nhom-truc' && /TẮT CƯỠNG BỨC/.test(z.text));
+      assert.ok(zm, 'báo nhóm khi tắt đêm');
+      assert.match(zm.text, /K1 \(kéo theo K2\)/); assert.match(zm.text, /Thay cáp ngầm trụ 12/); assert.match(zm.text, /Việc cần làm/);
+      assert.ok(!/FORCED_NIGHT_OFF/.test(zm.text), 'không lộ mã thô');
       const back = await s.api('POST', '/plc/stations/LVC02/commands', token('lam', 'editor'), { circuit: 'K1', mode: 'auto' });
       assert.equal(back.status, 202);
       assert.ok(await s.until(() => s.plc.Q[2] === true, 30e3));
@@ -147,6 +154,26 @@ test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
       assert.ok(ok);
       const r = await s.api('POST', '/plc/stations/LVC02/commands', token('lam', 'editor'), { circuit: 'K1', mode: 'on', minutes: 10 });
       assert.equal(r.body.error, 'ELR_LOCK');
+    });
+
+    await t.test('T7: Zalo lỗi → cảnh báo đi qua Telegram dự phòng, ghi vào nhật ký', async () => {
+      s.zaloCtl.down = true;
+      const st = await s.service.getStation('LVC02');
+      await s.service.runAlerts(st, { ...st.last_state, maint: true });
+      s.zaloCtl.down = false;
+      assert.ok(s.tgSent.some(t => /KHOÁ TẠI TỦ/.test(t)), JSON.stringify(s.tgSent));
+      const a = (await s.pool.query(`select delivery from plc.alerts where code = 'MAINT' order by id desc limit 1`)).rows[0];
+      assert.ok(a.delivery.some(d => d.to === 'telegram' && d.ok));
+    });
+
+    await t.test('góp ý: ghi vào plc.feedback; rỗng bị từ chối; phải đăng nhập', async () => {
+      const tok = token('lam', 'viewer');
+      assert.equal((await s.api('POST', '/plc/feedback', tok, { kind: 'loi_app' })).status, 400);
+      assert.equal((await s.api('POST', '/plc/feedback', null, { stars: 5 })).status, 401);
+      const r = await s.api('POST', '/plc/feedback', tok, { stars: 4, kind: 'de_xuat', content: 'Thêm bản đồ tủ', build: '202611160123', screen: 'station', stationId: 'LVC02' });
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+      const row = (await s.pool.query('select * from plc.feedback where id = $1', [r.body.id])).rows[0];
+      assert.equal(row.stars, 4); assert.equal(row.status, 'moi'); assert.equal(row.station_id, 'LVC02');
     });
 
     await t.test('B1: gói WS hỏng từ người chưa đăng nhập không làm sập dịch vụ', async () => {

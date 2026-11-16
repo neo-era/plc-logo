@@ -16,7 +16,7 @@
 :root{--bg:#f4f6fa;--surface:#fff;--surface2:#eef1f6;--text:#0f172a;--muted:#5b6476;--line:#e2e7ef;--border:#8a94a6;
 --brand:#0b6bcb;--brand-ink:#0a5aa8;--on-btn:#fff;--on:#166534;--on-bg:#dcfce7;--off:#475569;--off-bg:#e9edf3;--warn:#92400e;--warn-bg:#fef3c7;--err:#b91c1c;--err-bg:#fee2e2;
 --r:14px;--sh:0 1px 2px rgba(15,23,42,.06),0 4px 14px rgba(15,23,42,.06);--font:Inter,"Be Vietnam Pro","Segoe UI",Roboto,system-ui,sans-serif;--t:180ms}
-:root.dark{--bg:#0b1220;--surface:#121b2d;--surface2:#1a2539;--text:#e6ebf4;--muted:#93a0b8;--line:#24324a;--border:#5b6b86;--brand:#4aa3ff;--brand-ink:#4aa3ff;--on-btn:#04121f;
+:root.dark{--danger-bg:#b91c1c;--bg:#0b1220;--surface:#121b2d;--surface2:#1a2539;--text:#e6ebf4;--muted:#93a0b8;--line:#24324a;--border:#5b6b86;--brand:#4aa3ff;--brand-ink:#4aa3ff;--on-btn:#04121f;
 --on:#4ade80;--on-bg:#11331f;--off:#94a3b8;--off-bg:#1e293b;--warn:#fbbf24;--warn-bg:#3a2a0b;--err:#f87171;--err-bg:#3b1414;--sh:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35)}
 @media (prefers-reduced-motion:reduce){:root{--t:0ms}}
 *{box-sizing:border-box;margin:0}
@@ -41,7 +41,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .ch b{font-size:16px}.meta{color:var(--muted);font-size:13px}
 .btn{min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--surface);font-weight:700;padding:0 16px;transition:background var(--t),opacity var(--t)}
 .btn.primary{background:var(--brand);color:var(--on-btn);border-color:transparent}
-.btn.danger{background:var(--err);color:#fff;border-color:transparent}
+.btn.danger{background:var(--danger-bg,#b91c1c);color:#fff;border-color:transparent}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .btn.block{width:100%}
 .steps{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
@@ -55,12 +55,15 @@ button{font:inherit;color:inherit;cursor:pointer}
 .field{display:grid;gap:6px}.field label{font-weight:600;font-size:13.5px}
 input,select,textarea{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:10px;min-height:48px;padding:10px 12px;width:100%}
 textarea{min-height:96px;resize:vertical}
-.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-weight:600}
+.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{min-height:48px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-weight:600}
 .chip[aria-pressed=true]{background:var(--brand);color:var(--on-btn);border-color:transparent}
 .seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .seg3 button{min-height:52px;border-radius:12px;border:1px solid var(--border);background:var(--surface);font-weight:700}
 .seg3 button[aria-pressed=true]{background:var(--brand);color:var(--on-btn);border-color:transparent}
-.seg3 button.offsel[aria-pressed=true]{background:var(--err);color:#fff}
+.seg3 button.offsel[aria-pressed=true]{background:var(--danger-bg,#b91c1c);color:#fff}
+.sheet[inert]{visibility:hidden}
+.wrap.stale+*{}
+.circs{align-content:start}
 .scrim{position:fixed;inset:0;background:rgba(2,6,23,.45);z-index:20;opacity:0;pointer-events:none;transition:opacity var(--t)}
 .scrim.open{opacity:1;pointer-events:auto}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.2);transform:translateY(105%);transition:transform var(--t);max-height:88dvh;overflow:auto;display:grid;gap:12px}
@@ -122,12 +125,18 @@ const pad = n => String(n).padStart(2, '0');
 const vnDate = ms => new Date(ms + 7 * 3600e3);
 const fmtTime = ms => { const d = vnDate(ms); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
 const CIRC = { K1: 'Nhánh 1', K2: 'Nhánh 2', K3: 'Đèn HPS' };
-const REASON = { MAINT: 'Tủ đang khoá tại tủ (LOCAL)', ELR_LOCK: 'Khoá ELR — kiểm tra rò điện tại tủ', RATE_LIMIT: 'Đã cưỡng bức 4 lần trong 1 giờ',
+const REASON = { MAINT: 'Tủ đang khoá tại tủ (LOCAL)', ELR_LOCK: 'Khoá ELR (rò điện) — không bật từ xa được, cử tổ trực kiểm tra tuyến',
+  K3_COOLDOWN: 'Đèn HPS đang chờ nguội', NOT_DELIVERED: 'Lệnh không tới tủ', NOT_APPLIED: 'Lệnh không tới tủ', PLC_LINK_LOST: 'Gateway mất kết nối PLC',
+  LINK_UNSTABLE: 'Kết nối chưa ổn định', NOTE_REQUIRED: 'Cần nhập lý do tắt ban đêm (≥ 5 ký tự)', K3_COOLDOWN_WAIT: 'Đèn HPS đang chờ nguội', RATE_LIMIT: 'Đã cưỡng bức 4 lần trong 1 giờ',
   K2_NEEDS_K1: 'K2 chỉ bật được khi K1 đang sáng', OVERRIDE_NIGHT_OFF_TOO_LONG: 'Tắt ban đêm tối đa 2 giờ', OVERRIDE_NIGHT_OFF_TOTAL_TOO_LONG: 'Đêm nay đã tắt cưỡng bức đủ 2 giờ',
   OVERRIDE_TOO_LONG: 'Tối đa 12 giờ', REMOTE_NOT_OK: 'PLC chưa nhận quyền điều khiển từ xa', NOT_SYNCED: 'Gateway chưa đồng bộ giờ', EXPIRED: 'Lệnh tới tủ quá muộn (> 30 s)',
   NO_FEEDBACK: 'Contactor không phản hồi', REPLAY: 'Lệnh trùng/cũ', NO_STATION_ACCESS: 'Anh/chị không có quyền với tủ này', FORBIDDEN: 'Không đủ quyền', SCHEDULE_RATE_LIMIT: 'Đã sửa lịch 6 lần trong 1 giờ',
   NEEDS_CONFIRM: 'Lịch cần xác nhận', BAD_SCHEDULE: 'Giờ không hợp lệ', NETWORK: 'Mất mạng — thử lại', UNAUTHORIZED: 'Phiên đăng nhập hết hạn' };
-const reasonText = r => REASON[r] || r || '';
+const reasonText = (r, d) => {
+  if (r === 'K3_COOLDOWN' && d && d.minutes) return `Đèn HPS đang chờ nguội, còn ${d.minutes} phút`;
+  if (typeof r === 'string' && r.startsWith('OVERRIDE_STALE_')) return 'Lệnh cưỡng bức đã bị huỷ';
+  return REASON[r] || (r ? 'Lỗi: ' + r : '');
+};
 
 // ── giao diện sáng/tối ──
 function applyTheme() {
@@ -171,14 +180,23 @@ const Real = {
     let ws, closed = false, delay = 1000;
     const open = () => {
       ws = new WebSocket(apiBase().replace(/^http/, 'ws') + '/plc/ws');
-      ws.onopen = () => { delay = 1000; ws.send(JSON.stringify({ type: 'auth', token: (Real.token() || {}).a })); };
-      ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.type === 'ready') ws.send(JSON.stringify({ type: 'subscribe', stationId })); else onEvent(m); };
-      ws.onclose = () => { if (!closed) { setTimeout(open, delay); delay = Math.min(delay * 2, 30000); } };
+      ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: (Real.token() || {}).a }));
+      ws.onmessage = e => {
+        let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m.type === 'ready') { delay = 1000; state.wsUp = true; ws.send(JSON.stringify({ type: 'subscribe', stationId })); } else onEvent(m);
+      };
+      ws.onclose = async ev => {
+        state.wsUp = false; if (closed) return;
+        if (ev.code === 4401) {                       // token hết hạn/thu hồi → làm mới rồi mới kết nối lại
+          try { await Real.refresh(); } catch { closed = true; toast('Phiên đăng nhập hết hạn — đăng nhập lại'); return go('login'); }
+        }
+        setTimeout(open, delay); delay = Math.min(delay * 2, 30000);
+      };
     };
     open();
     return () => { closed = true; ws && ws.close(); };
   },
-  feedback: body => fetch(apiBase() + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(Real.token() ? { Authorization: 'Bearer ' + Real.token().a } : {}) }, body: JSON.stringify(body) }).then(r => { if (!r.ok) throw new Error('HTTP_' + r.status); }),
+  feedback: body => Real.req('POST', '/plc/feedback', body),
 };
 
 // DEMO: mô phỏng 1 tủ trong trình duyệt (dùng để xem giao diện / thử thao tác, không gửi gì ra ngoài)
@@ -220,6 +238,8 @@ const Demo = (() => {
       }
       if (path.endsWith('/commands') && method === 'POST') {
         if (st.maint) throw Object.assign(new Error('MAINT'), { code: 'MAINT' });
+        if (st.elr && body.mode === 'on') throw Object.assign(new Error('ELR_LOCK'), { code: 'ELR_LOCK' });
+        if (body.mode === 'off' && isNightNow() && !(body.note && body.note.length >= 5)) throw Object.assign(new Error('NOTE_REQUIRED'), { code: 'NOTE_REQUIRED' });
         const now = Date.now(), cmd = { cmdId: 'demo-' + (++st.seq), circuit: body.circuit, mode: body.mode, issued_at: new Date(now).toISOString(), issued_by: 'demo',
           until_at: body.minutes ? new Date(now + body.minutes * 60e3).toISOString() : null, events: [{ status: 'issued' }] };
         st.log.push(cmd);
@@ -233,7 +253,7 @@ const Demo = (() => {
       }
       return {};
     },
-    ws(f) { listeners.add(f); return () => listeners.delete(f); },
+    ws(f) { state.wsUp = true; listeners.add(f); return () => listeners.delete(f); },
     feedback: async () => {},
     set(k, v) { st[k] = v; listeners.forEach(f => f({ type: 'state', stationId: 'LVC02', state: snap() })); },
   };
@@ -311,6 +331,9 @@ async function openStation(id) {
 function circuitMode(s, c) {
   const ov = s.overrides && s.overrides[c];
   if (s.maint) return { t: 'Khoá tại tủ', cls: 'warn' };
+  if (s.elrLock) return { t: 'Khoá ELR', cls: 'err' };
+  const k1 = s.overrides && s.overrides.K1;
+  if (c === 'K2' && k1 && k1.mode === 'off' && k1.until > Date.now() && !(ov && ov.until > Date.now())) return { t: 'Tắt theo K1', cls: 'err' };
   if (ov && ov.until > Date.now()) return { t: `Cưỡng bức ${ov.mode === 'on' ? 'BẬT' : 'TẮT'} đến ${fmtTime(ov.until)}`, cls: ov.mode === 'on' ? 'warn' : 'err' };
   if (s.manual) return { t: 'Công tắc tay tại tủ', cls: 'warn' };
   if (s.remoteOk) return { t: 'Lịch từ xa', cls: 'brand' };
@@ -328,7 +351,7 @@ async function renderStation() {
     if (ev.stationId !== st.id) return;
     if (ev.type === 'state') { st.state = ev.state; st.stateAt = Date.now(); st.online = true; paintStation(); }
     if (ev.type === 'online') { st.online = ev.online; paintStation(); }
-    if (ev.type === 'ack') { const c = state.cmds[ev.cmdId]; if (c) { c.status = ev.status; c.reason = ev.reason; paintStation(); if (['failed', 'rejected', 'expired'].includes(ev.status)) toast(`${c.circuit}: ${reasonText(ev.reason) || ev.status}`); } }
+    if (ev.type === 'ack') { const c = state.cmds[ev.cmdId]; if (c) { c.status = ev.status; c.reason = ev.reason; paintStation(); if (['failed', 'rejected', 'expired'].includes(ev.status)) toast(`${c.circuit}: ${reasonText(ev.reason, ev.detail) || ev.status}`); } }
     if (ev.type === 'alert') toast(ev.message.split('\n')[1] || ev.message, 6000);
   }, st.id);
   paintStation();
@@ -345,10 +368,10 @@ function paintStation() {
   const pc = s.plcClock;
   $('#hRight').innerHTML = pc ? `<div class="clock" title="Giờ PLC (lệch ${pc.skewSec ?? 0} s)">${pad(pc.hour)}:${pad(pc.minute)}</div>` : '';
   const bands = [];
-  if (stale) bands.push(['err', `⚠ Mất kết nối từ ${at ? fmtTime(at) : '—'} — dữ liệu dưới đây là dữ liệu cũ. Đèn vẫn chạy theo lịch tại tủ.`]);
+  if (stale) bands.push(['err', !state.wsUp ? `⚠ App mất kết nối máy chủ — đang kết nối lại. Dữ liệu dưới đây có thể cũ.` : `⚠ Tủ mất kết nối từ ${at ? fmtTime(at) : '—'} — dữ liệu dưới đây là dữ liệu cũ. Đèn vẫn chạy theo lịch tại tủ.`]);
   else {
-    if (s.maint) bands.push(['warn', '🔒 Đang khoá tại tủ (LOCAL) — không điều khiển từ xa được.']);
-    if (s.elrLock) bands.push(['err', '⚡ Khoá ELR: rơ-le chống dòng rò tác động 3 lần — 3 mạch bị khoá đến sáng. Kiểm tra rò điện tại tủ.']);
+    if (s.maint) bands.push(['warn', '🔒 Đang khoá tại tủ (LOCAL) — PLC chạy lịch tại tủ / công tắc tay, không điều khiển từ xa được.']);
+    if (s.elrLock) bands.push(['err', '⚡ Khoá ELR (rò điện): ELR tác động 3 lần — 3 mạch bị khoá đến sáng (tự gỡ ban ngày). Nếu chưa xử lý rò, tối mai tủ sẽ đóng điện lại.']);
     if (!s.maint && !s.remoteOk) bands.push(['info', '↺ PLC đang chạy lịch tại tủ (dự phòng).']);
   }
   $('#band').innerHTML = bands.map(([c, t]) => `<div class="band ${c}" role="status">${esc(t)}</div>`).join('');
@@ -381,57 +404,103 @@ function paintStation() {
 }
 
 // ── bảng thao tác 2 bước ──
+let sheetOpener = null;
 function openSheet(html) {
   const sh = $('#sheet'), wasOpen = sh.classList.contains('open');
+  if (!wasOpen) sheetOpener = document.activeElement;
+  clearTimeout(openSheet.h); sh.removeAttribute('inert');
   sh.innerHTML = '<div class="grab"></div>' + html; sh.classList.add('open'); $('#scrim').classList.add('open');
   if (!wasOpen) history.pushState({ view: state.view, sheet: 1 }, '');
   setTimeout(() => (sh.querySelector('button:not([disabled]),input') || sh).focus(), 50);
 }
-function closeSheet(pop = true) { $('#sheet').classList.remove('open'); $('#scrim').classList.remove('open'); if (pop && history.state && history.state.sheet) history.back(); }
+function closeSheet(pop = true) {
+  const sh = $('#sheet');
+  // an toàn: bảng đóng là không còn nút nào nhận phím (QA Chốt 2 — lệnh gửi được từ bảng đã đóng)
+  sh.setAttribute('inert', ''); sh.querySelectorAll('button,input,textarea').forEach(b => { b.disabled = true; });
+  sh.classList.remove('open'); $('#scrim').classList.remove('open');
+  clearTimeout(openSheet.h); openSheet.h = setTimeout(() => { if (!sh.classList.contains('open')) sh.innerHTML = ''; }, 300);
+  if (sheetOpener && document.contains(sheetOpener)) try { sheetOpener.focus(); } catch {}
+  sheetOpener = null;
+  if (pop && history.state && history.state.sheet) history.back();
+}
 $('#scrim').onclick = () => closeSheet();
-addEventListener('keydown', e => { if (e.key === 'Escape' && $('#sheet').classList.contains('open')) closeSheet(); });
+addEventListener('keydown', e => {
+  const sh = $('#sheet'); if (!sh.classList.contains('open')) return;
+  if (e.key === 'Escape') { e.preventDefault(); return closeSheet(); }
+  if (e.key === 'Tab') {                                     // giữ tiêu điểm trong bảng
+    const f = [...sh.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled])')];
+    if (!f.length) return;
+    const i = f.indexOf(document.activeElement);
+    if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+  }
+});
 
 function openCommand(c) {
   const night = isNightNow();
-  let mode = null, minutes = 30;
+  let mode = null, minutes = 30, note = '';
+  const leftMin = Math.max(0, 120 - (Number(state.station?.state?.nightOffMin) || 0));
   const durs = [[15, '15 phút'], [30, '30 phút'], [60, '1 giờ'], [120, '2 giờ'], [240, '4 giờ']];
   const step1 = () => {
     openSheet(`<h2 id="sheetTitle" class="title">${c} · ${CIRC[c]} — chọn chế độ</h2>
       <div class="seg3" role="radiogroup">
-        <button data-m="auto" aria-pressed="${mode === 'auto'}">↺ Tự động</button>
+        <button data-m="auto" aria-pressed="${mode === 'auto'}">↺ Về theo lịch</button>
         <button data-m="on" aria-pressed="${mode === 'on'}">● Bật</button>
         <button data-m="off" class="offsel" aria-pressed="${mode === 'off'}">○ Tắt</button></div>
       <div id="durBox" class="${mode && mode !== 'auto' ? '' : 'hidden'}"><div class="field"><label>Trong bao lâu</label>
         <div class="chips">${durs.map(([m, l]) => {
-          const dis = mode === 'off' && night && m > 120;
+          const dis = mode === 'off' && night && m > leftMin;
           return `<button class="chip" data-d="${m}" aria-pressed="${minutes === m}" ${dis ? 'disabled' : ''}>${l}</button>`;
         }).join('')}</div></div>
-        ${mode === 'off' && night ? '<p class="note">Ban đêm chỉ được tắt cưỡng bức tối đa 2 giờ (cộng dồn trong đêm).</p>' : ''}</div>
+        ${mode === 'off' && night ? `<p class="note">Ban đêm chỉ được tắt cưỡng bức tối đa 2 giờ cộng dồn — đêm nay còn <b>${leftMin} phút</b>.</p>
+          <p class="note">Cần tắt lâu hơn 2 giờ (ngập nước, rò điện, trụ ngã, cháy) → cử tổ trực ra tủ cắt CB và vặn LOCAL.</p>` : ''}</div>
       <p class="note">⚠ Thao tác từ xa KHÔNG thay cho cô lập điện. Khi sửa chữa phải cắt CB tại tủ và treo biển.</p>
       <div class="grid2"><button class="btn" id="cancel">Huỷ</button><button class="btn primary" id="next" ${mode ? '' : 'disabled'}>Tiếp tục</button></div>`);
-    document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { mode = b.dataset.m; if (mode === 'off' && night && minutes > 120) minutes = 120; step1(); });
+    document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { mode = b.dataset.m; if (mode === 'off' && night && minutes > leftMin) minutes = [15, 30, 60, 120].filter(m => m <= leftMin).pop() || 15; step1(); });
     document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { minutes = +b.dataset.d; step1(); });
     $('#cancel').onclick = () => closeSheet(); $('#next').onclick = step2;
   };
   const step2 = () => {
     const until = Date.now() + minutes * 60e3;
-    const text = mode === 'auto' ? `${c} sẽ trở về chạy theo LỊCH` : `${c} sẽ ${mode === 'on' ? 'BẬT' : 'TẮT'} đến ${fmtTime(until)}`;
+    const text = mode === 'auto' ? `${c} sẽ trở về chạy theo LỊCH`
+      : c === 'K1' && mode === 'off' ? `K1 và K2 (liên động) sẽ TẮT đến ${fmtTime(until)}; khi hết hạn K1 sáng lại, K2 sáng sau 30 giây`
+      : `${c} sẽ ${mode === 'on' ? 'BẬT' : 'TẮT'} đến ${fmtTime(until)}`;
+    const needNote = mode === 'off' && night;
     const warn = mode === 'off' && night ? ' — đèn đường tắt ban đêm, nhóm trực sẽ được báo Zalo' : mode === 'on' && !night ? ' — đèn sáng ban ngày' : '';
     $('#sheet').innerHTML = `<div class="grab"></div><h2 id="sheetTitle" class="title">Xác nhận</h2>
       <div class="summary ${mode === 'off' ? 'danger' : ''}">${esc(text)}${esc(warn)}</div>
       ${c === 'K2' && mode === 'on' ? '<p class="note">K2 chỉ đóng sau khi K1 đã đóng 30 giây.</p>' : ''}
       ${c === 'K3' && mode === 'on' ? '<p class="note">Đèn HPS vừa tắt phải chờ nguội 15 phút mới bật lại được.</p>' : ''}
-      <button class="btn ${mode === 'off' ? 'danger' : 'primary'} block" id="ok" disabled>${mode === 'off' ? 'Xác nhận TẮT' : mode === 'on' ? 'Xác nhận BẬT' : 'Xác nhận về Tự động'}</button>
+      ${needNote ? `<div class="field"><label for="cmdNote">Lý do tắt ban đêm (bắt buộc, gửi kèm tin Zalo)</label><textarea id="cmdNote" maxlength="300" rows="2" placeholder="VD: thay cáp ngầm trụ 12, ngập nước…">${esc(note)}</textarea></div>` : ''}
+      <p class="note">⚠ Thao tác từ xa KHÔNG thay cho cô lập điện.</p>
+      <button class="btn ${mode === 'off' ? 'danger' : 'primary'} block" id="ok" disabled>${mode === 'off' ? 'Xác nhận TẮT' : mode === 'on' ? 'Xác nhận BẬT' : 'Xác nhận về theo lịch'}</button>
       <button class="btn block" id="backStep">‹ Quay lại</button>`;
-    setTimeout(() => { const b = $('#ok'); if (b) b.disabled = false; }, 800);   // chống chạm đúp
+    let armed = false;
+    const okState = () => { const b = $('#ok'); if (b) b.disabled = !armed || (needNote && note.trim().length < 5); };
+    setTimeout(() => { armed = true; okState(); }, 800);   // chống chạm đúp
+    if (needNote) $('#cmdNote').oninput = e => { note = e.target.value; okState(); };
     $('#backStep').onclick = step1;
     $('#ok').onclick = async () => {
+      if (!$('#sheet').classList.contains('open')) return;
       $('#ok').disabled = true; $('#ok').textContent = 'Đang gửi…';
+      const body = mode === 'auto' ? { circuit: c, mode } : { circuit: c, mode, minutes, ...(needNote ? { note: note.trim() } : {}) };
       try {
-        const cmd = await API.req('POST', `/plc/stations/${encodeURIComponent(state.station.id)}/commands`, mode === 'auto' ? { circuit: c, mode } : { circuit: c, mode, minutes });
+        const cmd = await API.req('POST', `/plc/stations/${encodeURIComponent(state.station.id)}/commands`, body);
         state.cmds[cmd.cmdId] = { circuit: c, mode, status: 'issued', at: Date.now(), stationId: state.station.id };
         closeSheet(); toast('Đã gửi lệnh — đang chờ tủ xác nhận'); paintStation();
-      } catch (e) { closeSheet(); toast('Không gửi được: ' + reasonText(e.code || e.message), 5000); }
+      } catch (e) {
+        closeSheet();
+        // mất mạng giữa chừng: có thể server đã nhận — tải lại nhật ký trước khi báo lỗi, tránh gửi lệnh lần 2
+        if (e.code === 'NETWORK') {
+          toast('Mất mạng khi gửi — đang kiểm tra lệnh đã tới máy chủ chưa…', 5000);
+          try {
+            const log = await API.req('GET', `/plc/stations/${encodeURIComponent(state.station.id)}/commands?limit=5`);
+            const hit = (Array.isArray(log) ? log : log.items || []).find(x => x.circuit === c && x.mode === mode && Date.now() - new Date(x.issued_at || x.issuedAt).getTime() < 60e3);
+            if (hit) { state.cmds[hit.cmd_id || hit.cmdId] = { circuit: c, mode, status: 'issued', at: Date.now(), stationId: state.station.id }; paintStation(); return toast('Lệnh ĐÃ tới máy chủ — không cần gửi lại'); }
+          } catch {}
+        }
+        toast('Không gửi được: ' + reasonText(e.code || e.message, e.detail), 6000);
+      }
     };
   };
   step1();
@@ -500,7 +569,7 @@ function showError(e) {
 // ── cài đặt + góp ý ──
 function openSettings() {
   const t = ls.get('theme', 'auto');
-  openSheet(`<h2 id="sheetTitle" class="title">Cài đặt</h2>
+  openSheet(`<div class="ch"><h2 id="sheetTitle" class="title">Cài đặt</h2><button class="btn" id="closeSet" aria-label="Đóng" style="min-width:48px">✕</button></div>
     <div class="field"><label>Giao diện</label><div class="chips">${[['auto', 'Theo máy'], ['light', 'Sáng'], ['dark', 'Tối']].map(([k, l]) => `<button class="chip" data-t="${k}" aria-pressed="${t === k}">${l}</button>`).join('')}</div></div>
     <div class="field"><label for="apiB">Máy chủ</label><input id="apiB" value="${esc(apiBase())}" ${DEMO ? 'disabled' : ''}></div>
     <button class="btn block" id="fbBtn">💬 Góp ý & đánh giá</button>
@@ -509,19 +578,19 @@ function openSettings() {
     <button class="btn block" id="logoutBtn">${DEMO ? 'Thoát chế độ xem thử' : 'Đăng xuất'}</button>`);
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { ls.set('theme', b.dataset.t); applyTheme(); openSettings(); });
   const ab = $('#apiB'); if (ab) ab.onchange = () => ls.set('apiBase', ab.value.trim());
-  $('#fbBtn').onclick = () => openFeedback();
+  $('#fbBtn').onclick = () => openFeedback(); $('#closeSet').onclick = () => closeSheet();
   $('#logoutBtn').onclick = () => { if (DEMO) location.href = './'; else { API.logout(); closeSheet(); go('login'); } };
   if (window.__installEvt) { const ib = $('#installBtn'); ib.classList.remove('hidden'); ib.onclick = async () => { window.__installEvt.prompt(); window.__installEvt = null; ib.classList.add('hidden'); }; }
   if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !navigator.standalone) $('#iosHint').style.display = 'block';
 }
 
 function openFeedback() {
-  let stars = 0, cat = 'feature';
+  let stars = 0, cat = 'de_xuat';
   const draw = () => {
     openSheet(`<h2 id="sheetTitle" class="title">Góp ý & đánh giá</h2>
       <div class="stars" role="radiogroup" aria-label="Chấm điểm">${[1, 2, 3, 4, 5].map(n => `<button data-s="${n}" aria-pressed="${stars >= n}" aria-label="${['Rất tệ', 'Tệ', 'Bình thường', 'Tốt', 'Rất tốt'][n - 1]}">★</button>`).join('')}</div>
       <p class="note">${stars ? ['Rất tệ', 'Tệ', 'Bình thường', 'Tốt', 'Rất tốt'][stars - 1] : 'Chạm để chấm điểm'}</p>
-      <div class="chips">${[['feature', 'Đề xuất tính năng'], ['bug', 'Lỗi app'], ['data', 'Sai trạng thái tủ'], ['other', 'Khác']].map(([k, l]) => `<button class="chip" data-c="${k}" aria-pressed="${cat === k}">${l}</button>`).join('')}</div>
+      <div class="chips">${[['de_xuat', 'Đề xuất tính năng'], ['loi_app', 'Lỗi app'], ['sai_du_lieu', 'Sai trạng thái tủ'], ['khac', 'Khác']].map(([k, l]) => `<button class="chip" data-c="${k}" aria-pressed="${cat === k}">${l}</button>`).join('')}</div>
       <div class="field"><label for="fbT">Nội dung</label><textarea id="fbT" maxlength="2000"></textarea></div>
       <button class="btn primary block" id="fbSend">Gửi</button>`);
     document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { stars = +b.dataset.s; const v = $('#fbT').value; draw(); $('#fbT').value = v; });
@@ -529,8 +598,9 @@ function openFeedback() {
     $('#fbSend').onclick = async () => {
       const content = $('#fbT').value.trim();
       if (!stars && !content) return toast('Chấm sao hoặc nhập nội dung');
-      const body = { app: 'plc', rating: stars || null, category: cat, content: content || null,
-        meta: { build: '202611160042', view: state.view, station: state.station?.id || null, standalone: matchMedia('(display-mode: standalone)').matches } };
+      const body = { stars: stars || null, kind: cat, content: content || null, build: '202611160126',
+        screen: state.view, stationId: state.station?.id || null,
+        device: (matchMedia('(display-mode: standalone)').matches ? 'pwa ' : 'web ') + innerWidth + '×' + innerHeight };
       try { await API.feedback(body); toast('Đã gửi góp ý — cảm ơn anh/chị!'); }
       catch { const q = ls.get('fbQueue', []); q.push(body); ls.set('fbQueue', q); toast('Đã lưu, sẽ gửi khi có mạng'); }
       closeSheet();
@@ -540,7 +610,7 @@ function openFeedback() {
 }
 async function flushFeedback() {
   const q = ls.get('fbQueue', []); if (!q.length || !navigator.onLine) return;
-  const rest = []; for (const b of q) { try { await API.feedback(b); } catch { rest.push(b); } }
+  const rest = []; for (const b of q) { if (!b || !('kind' in b)) continue; try { await API.feedback(b); } catch (e) { if (e.status !== 400) rest.push(b); } }
   ls.set('fbQueue', rest);
 }
 addEventListener('online', flushFeedback);

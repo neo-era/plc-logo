@@ -24,4 +24,10 @@ function createZalo({ token, base = DEFAULT_BASE, fetchFn = globalThis.fetch, ti
   };
 }
 
-module.exports = { createZalo, DEFAULT_BASE };
+// Kênh dự phòng Telegram (bot cảnh báo hệ thống có sẵn của LAVIPCO Server): cùng giao thức Bot API.
+function createTelegram({ token, chatId, fetchFn = globalThis.fetch }) {
+  const c = createZalo({ token, base: 'https://api.telegram.org', fetchFn });
+  return { enabled: !!(token && chatId), send: text => c.sendMessage(chatId, '[DỰ PHÒNG — Zalo lỗi]\n' + text) };
+}
+
+module.exports = { createZalo, createTelegram, DEFAULT_BASE };

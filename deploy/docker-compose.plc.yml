@@ -22,6 +22,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}            # cùng secret với core
       ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN}
       ZALO_WEBHOOK_SECRET: ${ZALO_WEBHOOK_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}   # dự phòng khi Zalo lỗi (bot cảnh báo sẵn có)
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       ALLOWED_ORIGINS: https://neo-era.github.io
       TRUSTED_PROXIES: 172.30.0.2          # = ipv4_address của caddy ở trên
       PORT: "3100"

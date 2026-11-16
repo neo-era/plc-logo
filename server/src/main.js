@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 const { createBroker } = require('./broker');
 const { createService } = require('./service');
 const { buildApp } = require('./app');
-const { createZalo } = require('./zalo');
+const { createZalo, createTelegram } = require('./zalo');
 
 const need = k => { const v = process.env[k]; if (!v) { console.error(`Thiếu biến môi trường ${k} — dừng`); process.exit(2); } return v; };
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -18,7 +18,8 @@ async function start() {
   if (jwtSecret.length < 32) { console.error('JWT_SECRET quá ngắn — dừng'); process.exit(2); }
   const db = new Pool({ connectionString: need('DATABASE_URL'), max: 10 });
   let brokerRef;
-  const service = createService({ db, publish: (t, o, opt) => brokerRef.publish(t, o, opt), zalo: createZalo({ token: process.env.ZALO_BOT_TOKEN }), log });
+  const service = createService({ db, publish: (t, o, opt) => brokerRef.publish(t, o, opt), zalo: createZalo({ token: process.env.ZALO_BOT_TOKEN }),
+    fallback: createTelegram({ token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID }), log });
   brokerRef = await createBroker({
     getStation: id => service.getStation(id), log, trustedProxies,
     onState: (id, s) => service.onState(id, s).catch(e => log('state', e.message)),

@@ -279,7 +279,7 @@ const flipsLastHour = (st, now) => Object.fromEntries(CIRCUITS.map(c => [c, (st.
 module.exports = {
   scheduleEditAllowed, flipsLastHour, MAX_SCHEDULE_EDITS_PER_HOUR,
   CIRCUITS, MARGIN, parseHM, fmtHM, isOnAt, vnMinute, isNight, deepNight, fullDay, validateSchedule,
-  defaultForceMinutes, nightMinutesBetween, validateOverride, initialState, restore, serialize, step,
+  defaultForceMinutes, nightMinutesBetween, validateOverride, initialState, restore, serialize, step, K3_COOLDOWN,
 };
 
 return module.exports; })();

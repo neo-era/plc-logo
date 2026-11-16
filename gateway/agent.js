@@ -138,6 +138,7 @@ class Gateway {
       remoteEn: this.out ? this.out.remoteEn : false, req: this.out ? this.out.req : null, reasons: this.out ? this.out.reasons : [],
       overrides: this.overrides, gatewayTempC: this.tempC(), ntpSynced: this.ntpSynced(),
       flips: S.flipsLastHour(this.sched, now), nightOffMin: this.sched.night ? Math.round(this.sched.night.offMin) : 0,
+      k3CooldownUntil: Number.isFinite(this.sched.k3OffSince) && now - this.sched.k3OffSince < S.K3_COOLDOWN ? this.sched.k3OffSince + S.K3_COOLDOWN : null,
     };
   }
 
@@ -164,7 +165,7 @@ class Gateway {
     if (cmd && typeof cmd.cmdId === 'string' && r.status !== 'duplicate') this.recentIds = [...this.recentIds, cmd.cmdId].slice(-RECENT_IDS);
     if (r.status === 'received') {
       if (cmd.mode === 'auto') delete this.overrides[cmd.circuit];
-      else this.overrides[cmd.circuit] = { mode: cmd.mode, until: cmd.until, setAt: r.setAt, cmdId: cmd.cmdId };
+      else this.overrides[cmd.circuit] = { mode: cmd.mode, until: cmd.until, setAt: r.setAt, cmdId: cmd.cmdId, ...(r.notifyGroup ? { notifyGroup: true } : {}) };
       this.pendingCmds.push({ cmd, status: 'received', at: now });
       this.lastHb = 0;                               // áp ngay ở lượt quét kế tiếp
     }

@@ -139,3 +139,24 @@ test('sự kiện (lệnh thất bại, ELR tác động) không gửi tin "hồ
   r = run([[at(20, 0), snap({ schedMismatch: true })], [at(20, 15), snap({ schedMismatch: true })]]);
   assert.ok(codes(r.all, 'raise').includes('SCHED_DRIFT'));
 });
+
+test('Chốt 2: tin Zalo có giờ, mạch, việc cần làm; không còn mã thô', () => {
+  const at = Date.UTC(2026, 10, 15, 15, 5);                 // 22:05 VN
+  for (const code of Object.keys(A.MSG)) {
+    const msg = A.format({ type: 'raise', code, at }, { stationId: 'LVC02', name: 'Tủ Lê Lợi' });
+    assert.match(msg, /22:05/, code); assert.match(msg, /Việc cần làm/, code);
+    assert.ok(!msg.includes(code), 'mã thô ' + code);
+  }
+  const f = A.format({ type: 'raise', code: 'FORCED_NIGHT_OFF', at, detail: { circuit: 'K1', until: at + 3600e3, by: 'Lâm', note: 'Thay cáp ngầm', usedMin: 30 } },
+    { stationId: 'LVC02', name: 'Tủ Lê Lợi' });
+  assert.match(f, /K1 \(kéo theo K2\)/); assert.match(f, /23:05/); assert.match(f, /Lâm/); assert.match(f, /Thay cáp ngầm/); assert.match(f, /90\/120/);
+  const q = A.format({ type: 'raise', code: 'QI_MISMATCH_K2', at }, { stationId: 'LVC02' });
+  assert.match(q, /contactor/i);
+});
+
+test('khoá LOCAL: không nhắc mỗi 30′ — chỉ nhắc khi quá 4 giờ', () => {
+  const s = snap({ maint: true, remoteOk: false });
+  const pts = []; for (let m = 0; m <= 300; m += 10) pts.push([at(10, 0) + m * 60e3, s]);
+  const { all } = run(pts);
+  assert.deepEqual(all.map(e => e.type), ['raise', 'remind']);
+});
