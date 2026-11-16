@@ -125,18 +125,8 @@ const pad = n => String(n).padStart(2, '0');
 const vnDate = ms => new Date(ms + 7 * 3600e3);
 const fmtTime = ms => { const d = vnDate(ms); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
 const CIRC = { K1: 'Nhánh 1', K2: 'Nhánh 2', K3: 'Đèn HPS' };
-const REASON = { MAINT: 'Tủ đang khoá tại tủ (LOCAL)', ELR_LOCK: 'Khoá ELR (rò điện) — không bật từ xa được, cử tổ trực kiểm tra tuyến',
-  K3_COOLDOWN: 'Đèn HPS đang chờ nguội', NOT_DELIVERED: 'Lệnh không tới tủ', NOT_APPLIED: 'Lệnh không tới tủ', PLC_LINK_LOST: 'Gateway mất kết nối PLC',
-  LINK_UNSTABLE: 'Kết nối chưa ổn định', NOTE_REQUIRED: 'Cần nhập lý do tắt ban đêm (≥ 5 ký tự)', K3_COOLDOWN_WAIT: 'Đèn HPS đang chờ nguội', RATE_LIMIT: 'Đã cưỡng bức 4 lần trong 1 giờ',
-  K2_NEEDS_K1: 'K2 chỉ bật được khi K1 đang sáng', OVERRIDE_NIGHT_OFF_TOO_LONG: 'Tắt ban đêm tối đa 2 giờ', OVERRIDE_NIGHT_OFF_TOTAL_TOO_LONG: 'Đêm nay đã tắt cưỡng bức đủ 2 giờ',
-  OVERRIDE_TOO_LONG: 'Tối đa 12 giờ', REMOTE_NOT_OK: 'PLC chưa nhận quyền điều khiển từ xa', NOT_SYNCED: 'Gateway chưa đồng bộ giờ', EXPIRED: 'Lệnh tới tủ quá muộn (> 30 s)',
-  NO_FEEDBACK: 'Contactor không phản hồi', REPLAY: 'Lệnh trùng/cũ', NO_STATION_ACCESS: 'Anh/chị không có quyền với tủ này', FORBIDDEN: 'Không đủ quyền', SCHEDULE_RATE_LIMIT: 'Đã sửa lịch 6 lần trong 1 giờ',
-  NEEDS_CONFIRM: 'Lịch cần xác nhận', BAD_SCHEDULE: 'Giờ không hợp lệ', NETWORK: 'Mất mạng — thử lại', UNAUTHORIZED: 'Phiên đăng nhập hết hạn' };
-const reasonText = (r, d) => {
-  if (r === 'K3_COOLDOWN' && d && d.minutes) return `Đèn HPS đang chờ nguội, còn ${d.minutes} phút`;
-  if (typeof r === 'string' && r.startsWith('OVERRIDE_STALE_')) return 'Lệnh cưỡng bức đã bị huỷ';
-  return REASON[r] || (r ? 'Lỗi: ' + r : '');
-};
+const reasonText = (r, d) => Core.reasons.reasonText(r, d);   // lõi đã test: không bao giờ hiện mã thô
+const statusText = s => Core.reasons.statusText(s);
 
 // ── giao diện sáng/tối ──
 function applyTheme() {
@@ -158,7 +148,11 @@ const Real = {
     if (!r.ok) throw new Error('Sai email hoặc mật khẩu');
     const j = await r.json(); ls.set('tok', { a: j.access_token, r: j.refresh_token });
   },
-  async refresh() {
+  refresh() {                                   // gộp các lần làm mới chạy song song (REST 401 + WS 4401)
+    if (!this._rf) this._rf = this._refresh().finally(() => { this._rf = null; });
+    return this._rf;
+  },
+  async _refresh() {
     const t = this.token(); if (!t) throw new Error('UNAUTHORIZED');
     const r = await fetch(apiBase() + '/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: t.r }) });
     if (!r.ok) { ls.set('tok', null); throw new Error('UNAUTHORIZED'); }
@@ -226,7 +220,7 @@ const Demo = (() => {
   return {
     token: () => ({ a: 'demo' }), async login() {}, logout() {},
     async req(method, path, body) {
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 250)); path = path.split('?')[0];
       if (path === '/plc/stations') return [{ id: 'LVC02', name: 'Tủ LVC02 — Lê Lợi (demo)', online: true, last_state: snap(), schedule: sched }];
       if (path === '/plc/stations/LVC02') return { id: 'LVC02', name: 'Tủ LVC02 — Lê Lợi (demo)', online: st.online, state: snap(), schedule: sched };
       if (path.endsWith('/commands') && method === 'GET') return st.log.slice().reverse();
@@ -280,6 +274,7 @@ function render() {
   $('#band').innerHTML = ''; $('#hRight').innerHTML = ''; $('#hSub').textContent = '';
   if (!API.token()) state.view = 'login';
   const v = state.view;
+  if ((v === 'login' || v === 'list') && state.unsub) { state.unsub(); state.unsub = null; clearInterval(state.tickH); }   // rời tủ / đăng xuất → đóng WS
   if (v === 'login') return renderLogin();
   if (v === 'list') return renderList();
   if (v === 'station') return renderStation();
@@ -555,8 +550,8 @@ async function renderLog() {
   $('#view').innerHTML = `<div class="card list">${rows.length ? rows.map(r => {
     const last = (r.events || []).at(-1) || {};
     const t = r.issued_at ? fmtTime(new Date(r.issued_at).getTime()) : '';
-    return `<div class="item"><div class="grow"><div class="title">${esc(r.circuit)} · ${r.mode === 'auto' ? 'Về tự động' : r.mode === 'on' ? 'BẬT' : 'TẮT'}${r.until_at ? ' đến ' + fmtTime(new Date(r.until_at).getTime()) : ''}</div>
-      <div class="sub">${t} · ${esc(r.issued_by)} · ${esc(last.status || '')} ${last.reason ? '— ' + esc(reasonText(last.reason)) : ''}</div></div></div>`;
+    return `<div class="item"><div class="grow"><div class="title">${esc(r.circuit)} · ${r.mode === 'auto' ? 'Về theo lịch' : r.mode === 'on' ? 'BẬT' : 'TẮT'}${r.until_at ? ' đến ' + fmtTime(new Date(r.until_at).getTime()) : ''}</div>
+      <div class="sub">${t} · ${esc(r.issued_by)} · ${esc(statusText(last.status))} ${last.reason ? '— ' + esc(reasonText(last.reason)) : ''}</div></div></div>`;
   }).join('') : '<div class="empty">Chưa có lệnh nào.</div>'}</div>`;
 }
 
@@ -598,7 +593,7 @@ function openFeedback() {
     $('#fbSend').onclick = async () => {
       const content = $('#fbT').value.trim();
       if (!stars && !content) return toast('Chấm sao hoặc nhập nội dung');
-      const body = { stars: stars || null, kind: cat, content: content || null, build: '202611160126',
+      const body = { stars: stars || null, kind: cat, content: content || null, build: '202611160149',
         screen: state.view, stationId: state.station?.id || null,
         device: (matchMedia('(display-mode: standalone)').matches ? 'pwa ' : 'web ') + innerWidth + '×' + innerHeight };
       try { await API.feedback(body); toast('Đã gửi góp ý — cảm ơn anh/chị!'); }
