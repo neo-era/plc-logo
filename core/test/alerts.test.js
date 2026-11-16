@@ -130,3 +130,12 @@ test('khoá ELR vẫn còn sau 07:00 → cảnh báo riêng', () => {
   const r = run([[at(7, 5), snap({ elrLock: true, Q: { K1: false, K2: false, K3: false }, I: { K1: false, K2: false, K3: null } })]]);
   assert.ok(codes(r.all, 'raise').includes('ELR_LOCK_DAY'));
 });
+
+test('sự kiện (lệnh thất bại, ELR tác động) không gửi tin "hồi phục"; lệch lịch phải kéo dài 15′', () => {
+  let r = run([[at(20, 0), snap({ cmdFailed: true })], [at(20, 1), snap()], [at(20, 5), snap()]]);
+  assert.deepEqual(r.all.map(e => [e.type, e.code]), [['raise', 'CMD_FAILED']]);
+  r = run([[at(20, 0), snap({ schedMismatch: true })], [at(20, 14), snap({ schedMismatch: true })]]);
+  assert.ok(!codes(r.all, 'raise').includes('SCHED_DRIFT'));
+  r = run([[at(20, 0), snap({ schedMismatch: true })], [at(20, 15), snap({ schedMismatch: true })]]);
+  assert.ok(codes(r.all, 'raise').includes('SCHED_DRIFT'));
+});

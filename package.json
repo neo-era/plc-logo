@@ -3,7 +3,10 @@
   "private": true,
   "description": "Điều khiển tủ chiếu sáng LOGO! qua 4G — lõi, bộ mô phỏng V4, gateway",
   "scripts": {
-    "test": "node --test core/test/*.test.js sim/test/*.test.js gateway/test/*.test.js"
+    "test": "node --test core/test/*.test.js sim/test/*.test.js gateway/test/*.test.js",
+    "test:e2e": "cd server && node --test test/e2e.test.js"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

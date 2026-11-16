@@ -1,0 +1,15 @@
+# Thêm vào docker-compose của LAVIPCO Server (mạng "edge" đi qua Caddy, "internal" tới Postgres).
+# KHÔNG publish cổng: gateway và app vào qua Caddy :443 (/mqtt, /plc/*).
+services:
+  plc:
+    build: { context: ../plc-logo, dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://plc_svc:${PLC_DB_PASSWORD}@db:5432/lavipco
+      JWT_SECRET: ${JWT_SECRET}            # cùng secret với core
+      ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN}
+      ZALO_WEBHOOK_SECRET: ${ZALO_WEBHOOK_SECRET}
+      ALLOWED_ORIGINS: https://neo-era.github.io
+      PORT: "3100"
+    networks: [edge, internal]
+    depends_on: [db]

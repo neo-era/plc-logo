@@ -27,13 +27,15 @@ const RULES = [
   ['QI_MISMATCH_K2', 1 * MIN, s => !mainsLost(s) && s.I.K2 !== null && s.Q.K2 !== s.I.K2],
   ['NIGHT_OFF', 5 * MIN, (s, now) => deepNight(vnMinute(now), s.sun) && ['K1', 'K2'].some(c => !s.Q[c] && !active(s.overrides, c, 'off', now) && !(c === 'K2' && active(s.overrides, 'K1', 'off', now))) && !mainsLost(s) && !s.elrLock && !s.maint],
   ['DAY_ON', 5 * MIN, (s, now) => fullDay(vnMinute(now), s.sun) && !s.maint && ['K1', 'K2', 'K3'].some(c => s.Q[c] && !active(s.overrides, c, 'on', now))],
-  ['SCHED_DRIFT', 1 * MIN, s => Number.isFinite(s.schedDriftMin) && s.schedDriftMin > 15],
+  // lịch từ xa (yêu cầu) khác lịch tại tủ (M32–M34) liên tục > 15′ → lịch dự phòng không khớp
+  ['SCHED_DRIFT', 15 * MIN, s => s.schedMismatch === true || (Number.isFinite(s.schedDriftMin) && s.schedDriftMin > 15)],
   ['CMD_FAILED', 0, s => s.cmdFailed === true],
   ['CLOCK', 2 * MIN, s => s.plcClock && (s.plcClock.year < 2025 || Math.abs(s.plcClock.skewSec) > 120)],
   ['LEGACY_NI', 1 * MIN, s => Array.isArray(s.legacyNI) && s.legacyNI.some(v => v)],
   ['GW_TEMP', 5 * MIN, s => s.gatewayTempC > 75],
 ];
 const ALWAYS = ['OFFLINE', 'BAD_SNAPSHOT'];
+const EVENT_CODES = ['CMD_FAILED', 'ELR_TRIP'];     // dạng sự kiện: không gửi tin "hồi phục"
 
 function snapshotOk(s) {
   const bools = o => o && ['K1', 'K2', 'K3'].every(c => typeof o[c] === 'boolean' || o[c] === null);
@@ -81,7 +83,7 @@ function evaluate(prev, s, now) {
       if (st.raised[code]) {
         if (st.clearSince[code] === undefined) st.clearSince[code] = now;
         if (now - st.clearSince[code] >= (CLEAR_HOLD_LONG[code] || CLEAR_HOLD) || hold === 0) {
-          note('clear', code);
+          if (!EVENT_CODES.includes(code)) note('clear', code);
           delete st.raised[code]; delete st.clearSince[code];
         }
       }
