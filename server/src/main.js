@@ -10,7 +10,7 @@ const need = k => { const v = process.env[k]; if (!v) { console.error(`Thiếu b
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 process.on('unhandledRejection', e => log('unhandledRejection', e && e.message));
-process.on('uncaughtException', e => log('uncaughtException', e && e.message));
+process.on('uncaughtException', e => { log('uncaughtException — thoát để Docker khởi động lại', e && e.stack); process.exit(1); });
 const trustedProxies = (process.env.TRUSTED_PROXIES || '172.30.0.2').split(',').map(s => s.trim());
 
 async function start() {

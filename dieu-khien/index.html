@@ -86,10 +86,11 @@ textarea{min-height:96px;resize:vertical}
 @media (min-width:760px){.circs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
 @media (orientation:landscape) and (max-height:520px){
  .top{padding-top:calc(6px + env(safe-area-inset-top));padding-bottom:6px}
- .wrap{grid-template-columns:minmax(220px,34%) 1fr;padding-top:8px;gap:8px}
- .circs{display:grid;gap:8px}
- .circ{padding:8px 12px;gap:4px;grid-template-columns:1fr auto;align-items:center}
- .circ .ch,.circ .meta,.circ .steps{grid-column:1}.circ .btn{grid-column:2;grid-row:1/span 3}
+ .wrap{padding-top:8px;gap:8px;max-width:none}
+ .circs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+ .circs .link{display:none}
+ .circ{padding:10px 12px;gap:6px}
+ .grid2{grid-template-columns:1fr 1fr}
  .sheet{left:auto;top:0;width:min(420px,48vw);border-radius:18px 0 0 18px;transform:translateX(105%);max-height:100dvh;padding-top:calc(12px + env(safe-area-inset-top))}
  .sheet.open{transform:none}.grab{display:none}
 }
@@ -335,7 +336,7 @@ async function renderStation() {
 }
 
 function paintStation() {
-  const st = state.station; if (!st) return;
+  const st = state.station; if (!st || state.view !== 'station') return;
   const s = st.state || {}, now = Date.now();
   const at = st.stateAt ? new Date(st.stateAt).getTime() : s.at || 0;
   const age = now - at, stale = !st.online || age > 90e3;
@@ -529,7 +530,7 @@ function openFeedback() {
       const content = $('#fbT').value.trim();
       if (!stars && !content) return toast('Chấm sao hoặc nhập nội dung');
       const body = { app: 'plc', rating: stars || null, category: cat, content: content || null,
-        meta: { build: '202611160037', view: state.view, station: state.station?.id || null, standalone: matchMedia('(display-mode: standalone)').matches } };
+        meta: { build: '202611160042', view: state.view, station: state.station?.id || null, standalone: matchMedia('(display-mode: standalone)').matches } };
       try { await API.feedback(body); toast('Đã gửi góp ý — cảm ơn anh/chị!'); }
       catch { const q = ls.get('fbQueue', []); q.push(body); ls.set('fbQueue', q); toast('Đã lưu, sẽ gửi khi có mạng'); }
       closeSheet();

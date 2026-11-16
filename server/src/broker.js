@@ -39,7 +39,13 @@ async function createBroker({ getStation, onState, onAck, onOnline, onHist = () 
   };
   const parts = topic => { const m = /^lvc\/([A-Z0-9-]{1,32})\/([a-z]+)$/.exec(topic); return m ? { station: m[1], kind: m[2] } : null; };
 
+  let warnedProxy = false, busyCount = 0;
   broker.authenticate = (client, username, password, cb) => {
+    const remote = (client.req?.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+    if (!warnedProxy && remote && !trustedProxies.includes(remote)) {
+      warnedProxy = true;
+      log(`CẢNH BÁO: kết nối /mqtt đến từ ${remote} không thuộc TRUSTED_PROXIES (${trustedProxies.join(',')}) — kiểm IP cố định của Caddy, nếu không mọi gateway dùng chung một IP khi chặn dò khoá`);
+    }
     const ip = clientIp(client.req, trustedProxies);
     let done = false;
     const finish = (err, ok) => { if (done) return; done = true; cb(err, ok); };
@@ -53,7 +59,10 @@ async function createBroker({ getStation, onState, onAck, onOnline, onHist = () 
     };
     if (blocked(ip)) { const e = new Error('Blocked'); e.returnCode = 5; return finish(e, false); }
     if (typeof username !== 'string' || !STATION_RE.test(username) || client.id !== `gw-${username}` || !password) return deny();
-    if (authInFlight >= maxConcurrentAuth) { const e = new Error('Busy'); e.returnCode = 3; return finish(e, false); }
+    if (authInFlight >= maxConcurrentAuth) {
+      if (++busyCount % 50 === 0) log('auth: quá tải xác thực (có thể đang bị dò khoá từ nhiều IP)', busyCount);
+      const e = new Error('Busy'); e.returnCode = 3; return finish(e, false);
+    }
     authInFlight++;
     Promise.resolve(getStation(username))
       .then(async st => {

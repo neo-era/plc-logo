@@ -97,13 +97,17 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
   }
 
   /** Trạng thái đệm khi gateway mất MQTT: chỉ ghi lịch sử (không đổi trạng thái hiện tại), tối đa 500 mẫu/lần kết nối. */
-  const histCount = new Map();
+  const histCount = new Map(), histDaily = new Map();
   async function onHist(stationId, msg) {
     const items = Array.isArray(msg?.items) ? msg.items.slice(0, 20) : [];
     for (const it of items) {
       const n = histCount.get(stationId) || 0;
       if (n >= 500) return;
       if (!it || typeof it !== 'object' || it.stationId !== stationId || !Number.isFinite(it.at)) continue;
+      if (it.at > now() || it.at < now() - 7 * 864e5) continue;                // chỉ nhận mẫu trong 7 ngày qua
+      const day = Math.floor(now() / 864e5), dk = stationId + ':' + day;
+      const dc = histDaily.get(dk) || 0; if (dc >= 5000) return;              // trần/ngày chống ghi vô hạn khi lộ khoá
+      histDaily.set(dk, dc + 1);
       histCount.set(stationId, n + 1);
       await q('insert into plc.state_history(station_id, at, state) values ($1,$2,$3)', [stationId, new Date(it.at), JSON.stringify({ ...it, buffered: true })]);
     }

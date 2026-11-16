@@ -1,5 +1,5 @@
 /* Service worker: cache vỏ ứng dụng (cache-first), dữ liệu API luôn lấy từ mạng. */
-const CACHE = 'tu4g-202611160037';
+const CACHE = 'tu4g-202611160042';
 const SHELL = ['./', './index.html', './core.bundle.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

@@ -44,7 +44,8 @@ function main() {
   let lastTickOk = Date.now();
   const origTick = gw.tick.bind(gw);
   gw.tick = async () => { await origTick(); lastTickOk = Date.now(); };
-  const notify = msg => { if (process.env.NOTIFY_SOCKET) execFile('systemd-notify', [msg], () => {}); };
+  // --pid: gán tin cho đúng tiến trình chính (tránh race PID của tiến trình con systemd-notify)
+  const notify = msg => { if (process.env.NOTIFY_SOCKET) execFile('systemd-notify', [`--pid=${process.pid}`, msg], () => {}); };
   notify('READY=1');
   setInterval(() => { if (Date.now() - lastTickOk < 30000) notify('WATCHDOG=1'); }, 15000);
 
