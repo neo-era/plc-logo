@@ -164,7 +164,7 @@ Logic hiện tại:
 6. Q2/Q3/Q4 qua ¬M15·¬C009. **Reset C009 đổi thành `¬T001·¬M2·¬M3·¬M23·¬C011`** — chỉ gỡ khoá ELR ban ngày khi không còn mạch nào được yêu cầu bật (lịch từ xa hay cưỡng bức không gỡ được khoá). C009 đặt **Rem = on** để cúp nguồn PLC không xoá khoá. Không cho ghi giờ T001 (VW2/VW4) qua Modbus khi chưa đánh giá lại điều kiện gỡ khoá này.
 7. `M16 = C009`; `M32/M33/M34 = T001/T002/T006`; dòng màn hình `4G: REMOTE / LOCAL / KHOA`.
 8. **K3 nguội trong PLC:** T012 Off-delay 15′ kích bằng Q4; `M35 = T012·¬Q4` (vừa tắt chưa đủ 15′); `Q4 = ¬M15·¬C009·M23·¬M35`. **Áp dụng** — anh Lâm xác nhận 16/11/2026: K3 là mạch đèn riêng giống K1, K2 (không phải contactor chuyển nấc công suất).
-9. Hệ quả cần biết: vì K2 cần K1 đóng 30 s, **NI2 (cấm K1) nay cấm luôn K2** — khác chương trình cũ.
+9. Hệ quả: vì K2 cần K1 đóng 30 s, **NI2 (cấm K1) nay cấm luôn K2** — khác chương trình cũ; **anh Lâm đồng ý 16/11/2026**.
 
 ### 4.3 Cấu hình & thử
 - Modbus server: **bỏ *Accept all*, chỉ nhận kết nối từ 192.168.0.10** (gateway); thử từ máy IP khác phải bị từ chối. **NTP client** → 192.168.0.1 (hoặc gateway .10), UTC+7 — đồng bộ giờ chính.
@@ -238,3 +238,4 @@ Logic hiện tại:
 | 15/11/2026 | Vòng 2 | QA & kiến trúc | Duyệt có điều kiện → đã sửa | Bỏ im lặng chống lặp: tái phát sau hồi phục luôn báo "TÁI PHÁT", NIGHT_OFF/DAY_ON chờ ổn định 10′ mới báo hồi phục, CMD_FAILED báo mỗi lần; bỏ dấu thời gian tương lai trong state; K3 rơi (ELR) khi đang yêu cầu bật → nguội 15′; T11 chọn phương án (a) + `scheduleEditAllowed` ≤ 6 lần sửa lịch/giờ; lệnh "Tự động" luôn được nhận. Nhận NÊN: setAt = giờ gateway lúc accept, lý do OVERRIDE_STALE, cộng dồn tắt đêm (nightOffUsedMin), K3 sáng ban ngày cảnh báo, BAD_SUN, tính lại thời gian giữ sau khi hết mất kết nối, chống trùng theo danh sách cmdId gần nhất, `flipsLastHour` lấy từ state. 41 ca xấu của QA thành test hồi quy. **90/90 test đạt** |
 | 16/11/2026 | Xác nhận nghiệp vụ | anh Lâm | — | K3 là mạch đèn riêng giống K1, K2 → giữ khoá nguội 15′ cho K3 trong PLC (T012/M35) và trong gateway |
 | 16/11/2026 | Thay đổi phạm vi | anh Lâm | — | K3 bật/tắt cưỡng bức từ xa giống K1/K2 (vẫn giữ khoá nguội 15′, khoá ELR, giới hạn đóng cắt, giới hạn tắt đêm cộng dồn); app hiện nút "Đổi chế độ…" cho cả K3 |
+| 16/11/2026 | Xác nhận nghiệp vụ | anh Lâm | — | Đồng ý NI2 (cấm K1) cấm luôn K2 trong V4 |
