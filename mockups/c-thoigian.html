@@ -1,0 +1,37 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Phương án C — Dòng thời gian</title><link rel="stylesheet" href="tokens.css">
+<style>
+.wrap{flex:1;overflow:auto;padding:14px;display:grid;gap:12px;align-content:start}
+.hero{padding:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.big{font-size:30px;font-weight:800;letter-spacing:-.5px}
+.tl{padding:14px;display:grid;gap:14px}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;padding-left:46px}
+.line{display:grid;grid-template-columns:36px 1fr 96px;gap:10px;align-items:center}
+.bar{position:relative;height:30px;border-radius:8px;background:linear-gradient(90deg,#fde68a 0 22.8%,#1e293b 22.8% 74.5%,#fde68a 74.5%);overflow:hidden}
+.dark .bar{opacity:.95}
+.seg{position:absolute;top:5px;bottom:5px;border-radius:5px;background:var(--on)}
+.seg.f{background:var(--warn)}
+.now{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--err)}
+.name{font-weight:800}
+.state{font-size:12px;font-weight:700;text-align:right}
+.legend{display:flex;gap:12px;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.fab{position:fixed;right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));min-height:56px;padding:0 20px;border-radius:16px;border:0;background:var(--brand);color:var(--brand-ink);font:700 15px var(--font);box-shadow:var(--sh)}
+@media (orientation:landscape) and (max-height:520px){
+ .wrap{grid-template-columns:minmax(200px,32%) 1fr;align-items:start}.hero{flex-direction:column;align-items:flex-start}.big{font-size:26px}
+ .tl{gap:10px}.bar{height:24px}
+}
+</style></head><body><div class="app">
+<div class="top"><button class="back" aria-label="Quay lại">‹</button><div style="flex:1"><div class="title">Tủ LVC02</div><div class="sub">cập nhật 3 giây trước</div></div><span class="pill on"><span class="dot"></span>Online</span></div>
+<div class="wrap">
+ <div class="card hero"><div><div class="sub">Giờ PLC (NTP, lệch 2s)</div><div class="big mono">19:52</div></div><div style="display:grid;gap:6px;justify-items:end"><span class="pill brand">Lịch từ xa</span><span class="pill off">Công tắc: REMOTE</span></div></div>
+ <div class="card tl">
+  <div class="axis"><span>12h</span><span>18h</span><span>0h</span><span>6h</span><span>12h</span></div>
+  <div class="line"><span class="name">K1</span><div class="bar"><div class="seg" style="left:24.3%;width:50%"></div><div class="now" style="left:32.8%"></div></div><span class="state" style="color:var(--on)">SÁNG</span></div>
+  <div class="line"><span class="name">K2</span><div class="bar"><div class="seg f" style="left:31%;width:4.5%"></div><div class="seg" style="left:24.4%;width:6.6%"></div><div class="seg" style="left:35.5%;width:39%"></div><div class="now" style="left:32.8%"></div></div><span class="state" style="color:var(--warn)">CƯỠNG BỨC</span></div>
+  <div class="line"><span class="name">K3</span><div class="bar"><div class="seg" style="left:41.7%;width:25%"></div><div class="now" style="left:32.8%"></div></div><span class="state" style="color:var(--off)">TẮT</span></div>
+  <div class="legend"><span><i style="background:#fde68a"></i>Ban ngày</span><span><i style="background:var(--on)"></i>Lịch bật</span><span><i style="background:var(--warn)"></i>Cưỡng bức</span><span><i style="background:var(--err)"></i>Bây giờ</span></div>
+ </div>
+</div>
+<button class="fab">⚡ Điều khiển</button>
+</div></body></html>

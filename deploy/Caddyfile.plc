@@ -1,0 +1,11 @@
+# Chèn vào khối site api.lavipco.vn của Caddyfile hiện có
+handle /mqtt {
+	reverse_proxy plc:3100 {
+		stream_close_delay 5m   # reload cấu hình không cắt ngay kết nối gateway
+	}
+}
+handle /plc/* {
+	reverse_proxy plc:3100 {
+		stream_close_delay 5m
+	}
+}

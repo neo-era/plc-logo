@@ -1,0 +1,42 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Phương án A — Thẻ mạch</title><link rel="stylesheet" href="tokens.css">
+<style>
+.wrap{flex:1;overflow:auto;padding:14px;display:grid;gap:12px;align-content:start}
+.status{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kv .k{color:var(--muted);font-size:12px}.kv .v{font-weight:700;font-size:16px}
+.circ{padding:14px;display:grid;gap:10px}
+.ch{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ch b{font-size:16px}.meta{color:var(--muted);font-size:13px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface2);border-radius:12px;padding:4px;gap:4px}
+.seg button{min-height:44px;border:0;border-radius:9px;background:transparent;color:var(--text);font:600 14px var(--font)}
+.seg .sel{background:var(--surface);box-shadow:var(--sh);color:var(--brand)}
+.lock{opacity:.5}
+@media (orientation:landscape) and (max-height:520px){
+ .wrap{grid-template-columns:minmax(200px,30%) 1fr;gap:8px;padding:8px 10px}
+ .status{grid-template-columns:1fr 1fr;grid-row:span 3;padding:10px}
+ .circ{padding:8px 12px;gap:6px;grid-template-columns:1fr 250px;align-items:center}
+ .circ .ch{grid-column:1}.circ .meta{grid-column:1;font-size:12px}.circ .seg{grid-column:2;grid-row:1/span 2}
+ .circ .seg button{min-height:40px}
+ .top{padding:6px 12px}.toast{bottom:auto;top:10px}
+}
+</style></head><body><div class="app">
+<div class="top"><button class="back" aria-label="Quay lại">‹</button><div style="flex:1"><div class="title">Tủ LVC02</div><div class="sub">Lê Lợi · cập nhật 3 giây trước</div></div><span class="pill on"><span class="dot"></span>Online 4G</span></div>
+<div class="wrap">
+ <div class="card status">
+  <div class="kv"><div class="k">Chế độ</div><div class="v" style="color:var(--brand)">Lịch từ xa</div></div>
+  <div class="kv"><div class="k">Giờ PLC</div><div class="v mono">19:52:10</div><div class="meta">lệch 2 giây · NTP</div></div>
+  <div class="kv"><div class="k">Hoàng hôn / Bình minh</div><div class="v mono">17:28 / 05:53</div></div>
+  <div class="kv"><div class="k">Công tắc tại tủ</div><div class="v">REMOTE</div></div>
+ </div>
+ <div class="card circ"><div class="ch"><b>K1 · Nhánh 1</b><span class="pill on"><span class="dot"></span>Đang sáng</span></div>
+  <div class="meta">Lịch 17:45 → 05:45 · phản hồi contactor khớp</div>
+  <div class="seg" role="radiogroup"><button class="sel">Tự động</button><button>Bật</button><button>Tắt</button></div></div>
+ <div class="card circ"><div class="ch"><b>K2 · Nhánh 2</b><span class="pill warn"><span class="dot"></span>Bật cưỡng bức · còn 42′</span></div>
+  <div class="meta">Lịch 17:46 → 05:45 · chờ K1 30 s</div>
+  <div class="seg"><button>Tự động</button><button class="sel">Bật</button><button>Tắt</button></div></div>
+ <div class="card circ"><div class="ch"><b>K3 · HPS</b><span class="pill off"><span class="dot"></span>Tắt</span></div>
+  <div class="meta">Lịch 22:00 → 04:00 · chỉ xem trong v1</div>
+  <div class="seg lock"><button class="sel">Tự động</button><button disabled>Bật</button><button disabled>Tắt</button></div></div>
+</div>
+<div class="toast">⏳ Lệnh K2 Bật: đã tới tủ · chờ contactor…</div>
+</div></body></html>

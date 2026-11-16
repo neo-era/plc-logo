@@ -1,0 +1,39 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Phương án B — Sơ đồ tủ</title><link rel="stylesheet" href="tokens.css">
+<style>
+.wrap{flex:1;overflow:auto;padding:14px;display:grid;gap:12px;align-content:start}
+.diag{padding:16px}
+.bus{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;margin-bottom:12px}
+.bus i{flex:1;height:3px;background:var(--on);border-radius:2px}
+.row{display:grid;grid-template-columns:56px 1fr auto;align-items:center;gap:12px;padding:10px 0;border-top:1px dashed var(--line)}
+.k{width:56px;height:56px;border-radius:14px;display:grid;place-items:center;font-weight:800;border:2px solid var(--line);background:var(--surface2)}
+.k.on{border-color:var(--on);background:var(--on-bg);color:var(--on);box-shadow:0 0 0 6px color-mix(in srgb,var(--on) 12%,transparent)}
+.k.f{border-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+.lamps{display:flex;gap:5px}.lamps span{width:14px;height:14px;border-radius:50%;background:var(--off-bg);border:1px solid var(--line)}
+.lamps.on span{background:#facc15;border-color:#eab308;box-shadow:0 0 8px #fde047}
+.lbl b{display:block}.lbl small{color:var(--muted)}
+.link{font-size:11.5px;color:var(--muted);padding-left:68px;margin-top:-4px}
+.sheet{background:var(--surface);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -8px 24px rgba(0,0,0,.08)}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 10px}
+.acts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.info{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:10px}
+@media (orientation:landscape) and (max-height:520px){
+ .app{display:grid;grid-template-columns:1fr minmax(260px,38%);grid-template-rows:auto 1fr}
+ .top{grid-column:1/-1}.wrap{padding:10px}.row{padding:6px 0}.k{width:46px;height:46px}
+ .sheet{border-radius:0;border-top:0;border-left:1px solid var(--line);box-shadow:none;align-self:stretch}
+ .grab{display:none}.acts{grid-template-columns:1fr 1fr}
+}
+</style></head><body><div class="app">
+<div class="top"><button class="back" aria-label="Quay lại">‹</button><div style="flex:1"><div class="title">Tủ LVC02</div><div class="sub">Lịch từ xa · PLC 19:52:10 (lệch 2s)</div></div><span class="pill on"><span class="dot"></span>4G</span></div>
+<div class="wrap"><div class="card diag">
+ <div class="bus">Nguồn 3 pha <i></i> có điện</div>
+ <div class="row"><div class="k on">K1</div><div class="lbl"><b>Nhánh 1</b><small>Lịch 17:45–05:45 · tự động</small></div><div class="lamps on"><span></span><span></span><span></span><span></span></div></div>
+ <div class="link">↳ liên động 30 s</div>
+ <div class="row"><div class="k f">K2</div><div class="lbl"><b>Nhánh 2</b><small>Bật cưỡng bức · còn 42′</small></div><div class="lamps on"><span></span><span></span><span></span><span></span></div></div>
+ <div class="row"><div class="k">K3</div><div class="lbl"><b>HPS</b><small>Lịch 22:00–04:00</small></div><div class="lamps"><span></span><span></span><span></span><span></span></div></div>
+</div></div>
+<div class="sheet"><div class="grab"></div>
+ <div class="info"><span>Đang chọn: <b style="color:var(--text)">K2 · Nhánh 2</b></span><span>Công tắc tủ: REMOTE</span></div>
+ <div class="acts"><button class="btn">Tự động</button><button class="btn primary">Bật</button><button class="btn">Tắt</button></div>
+</div>
+</div></body></html>

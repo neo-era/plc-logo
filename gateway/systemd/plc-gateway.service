@@ -1,18 +1,28 @@
 [Unit]
-Description=PLC LOGO! Gateway (Modbus ↔ MQTT)
-After=network-online.target
+Description=Gateway tủ chiếu sáng (LOGO! Modbus ↔ MQTT)
+After=network-online.target time-sync.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/plc-logo/gateway
+Type=notify
+NotifyAccess=all
+WatchdogSec=60
+User=plcgw
+EnvironmentFile=/etc/plc-gateway.env
+WorkingDirectory=/opt/plc-gateway
 ExecStart=/usr/bin/node gateway.js
+StateDirectory=plc-gateway
 Restart=always
 RestartSec=5
+# giới hạn quyền
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/plc-gateway
+# Hệ điều hành chỉ đọc (overlayfs): /var/lib/plc-gateway PHẢI nằm trên phân vùng ghi được, bền khi cúp điện
 StandardOutput=journal
 StandardError=journal
-Environment=NODE_ENV=production
 
 [Install]
 WantedBy=multi-user.target

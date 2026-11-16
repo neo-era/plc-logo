@@ -1,13 +1,10 @@
-FROM node:20-alpine
-RUN apk add --no-cache python3 make g++ sqlite
-
+FROM node:24-alpine
 WORKDIR /app
-COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
-
-COPY . .
-
-RUN mkdir -p /app/data
-ENV NODE_ENV=production
-EXPOSE 8080 1883 8883
-CMD ["node", "server.js"]
+COPY core ./core
+COPY server/package.json server/package-lock.json ./server/
+RUN cd server && npm ci --omit=dev && npm cache clean --force
+COPY server/src ./server/src
+COPY server/db ./server/db
+USER node
+EXPOSE 3100
+CMD ["node", "server/src/main.js"]

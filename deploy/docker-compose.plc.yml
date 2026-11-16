@@ -1,0 +1,31 @@
+# Thêm vào docker-compose của LAVIPCO Server.
+# KHÔNG publish cổng: gateway và app vào qua Caddy :443 (/mqtt, /plc/*).
+# BẮT BUỘC: Caddy có IP CỐ ĐỊNH trong mạng "edge" và TRUSTED_PROXIES phải khớp IP đó —
+# nếu lệch, mọi gateway mang chung IP của Caddy và 5 lần dò khoá sai sẽ chặn TẤT CẢ tủ.
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  caddy:
+    networks:
+      edge:
+        ipv4_address: 172.30.0.2
+
+  plc:
+    build: { context: ../plc-logo, dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://plc_svc:${PLC_DB_PASSWORD}@db:5432/lavipco
+      JWT_SECRET: ${JWT_SECRET}            # cùng secret với core
+      ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN}
+      ZALO_WEBHOOK_SECRET: ${ZALO_WEBHOOK_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}   # dự phòng khi Zalo lỗi (bot cảnh báo sẵn có)
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      ALLOWED_ORIGINS: https://neo-era.github.io
+      TRUSTED_PROXIES: 172.30.0.2          # = ipv4_address của caddy ở trên
+      PORT: "3100"
+    networks: [edge, internal]
+    depends_on: [db]
