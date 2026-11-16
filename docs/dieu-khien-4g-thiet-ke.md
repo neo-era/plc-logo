@@ -1,6 +1,6 @@
 # Điều khiển tủ chiếu sáng LOGO! qua Internet bằng SIM 4G — Thiết kế
 
-Phiên bản thiết kế: 0.2 (15/11/2026) — đã qua Chốt 1 (duyệt có điều kiện, đã áp thay đổi bắt buộc — xem mục 8)
+Phiên bản thiết kế: 0.3 (16/11/2026) — đã qua Chốt 1, Chốt UI, review code, Chốt 2 (nghiệp vụ duyệt có điều kiện, QA đang duyệt vòng 2 — xem mục 8)
 Sản phẩm: mở rộng app `neo-era.github.io/plc-logo` + bộ 4G lắp tại tủ + dịch vụ `plc` trên LAVIPCO Server.
 
 ## 0. Đã chốt với anh Lâm
@@ -32,11 +32,11 @@ Sản phẩm: mở rộng app `neo-era.github.io/plc-logo` + bộ 4G lắp tại
 | T4 | Liên động K1 → K2 | giữ nguyên: K2 chỉ đóng khi K1 đã đóng ≥ 30 s, K2 cắt theo K1 — **trong mọi chế độ**; lệnh bật K2 khi K1 đang tắt → `rejected: chờ K1` |
 | T5 | Lịch bật/tắt từ xa | đúng phút (sai số ≤ 1 phút), hiểu khoảng qua đêm; từ chối giờ không hợp lệ; lịch/lệnh làm **đèn tắt quá 30 phút sau hoàng hôn hoặc sáng quá 30 phút sau bình minh** (giờ mặt trời TP.HCM) cần xác nhận kèm lý do |
 | T6 | Đồng hồ PLC | lệch ≤ 90 s so với giờ VN; NTP của LOGO! là chính, FC15 chỉ dự phòng; mất giờ (năm < 2025) → cảnh báo; giờ gateway / RTC PLC / server lệch nhau > 2 phút → REMOTE_EN = 0 |
-| T7 | Cảnh báo Zalo | ≤ 2 phút **tính từ lúc luật cảnh báo kích hoạt** (sau trễ của luật; vd offline: trễ 5 phút → tin tới tối đa 7 phút sau khi mất kết nối); ≤ 1 tin/sự cố/30 phút; có tin hồi phục; kênh Zalo lỗi → cảnh báo trên app + email dự phòng |
-| T8 | Bảo mật | không mở cổng vào tại tủ; mọi kết nối TLS; khoá gateway ≥ 128 bit, thu hồi ngắt phiên ≤ 10 s; chỉ vai trò `editor` của app plc **được gán cho đúng tủ** mới ra lệnh; nhật ký sự kiện lệnh append-only (REVOKE UPDATE/DELETE/TRUNCATE + trigger chặn); chống phát lại lệnh |
+| T7 | Cảnh báo Zalo | ≤ 2 phút **tính từ lúc luật cảnh báo kích hoạt** (sau trễ của luật; vd offline: trễ 5 phút → tin tới tối đa 7 phút sau khi mất kết nối); ≤ 1 tin/sự cố/30 phút; có tin hồi phục; tin có giờ, mạch, việc cần làm; kênh Zalo lỗi → cảnh báo trên app + **Telegram dự phòng** (anh Lâm chốt 16/11/2026) |
+| T8 | Bảo mật | không mở cổng vào tại tủ; mọi kết nối TLS; khoá gateway ≥ 128 bit, thu hồi ngắt phiên ≤ 10 s; chỉ vai trò `editor` của app plc **được gán cho đúng tủ** mới ra lệnh (`admin` toàn quyền mọi tủ — anh Lâm chốt 16/11/2026); nhật ký sự kiện lệnh append-only (REVOKE UPDATE/DELETE/TRUNCATE + trigger chặn); chống phát lại lệnh |
 | T9 | Dữ liệu 4G | ≤ 300 MB/tháng/tủ, đo bằng bộ đếm data của router trong 7 ngày × 30/7 |
 | T10 | App | PWA cài được desktop + mobile, dọc + ngang, sáng/tối, có kênh góp ý & đánh giá, nút quay lại mọi trang phụ |
-| T11 | An toàn | công tắc khoá **LOCAL/REMOTE** tại tủ: ở LOCAL → REMOTE_OK = 0, huỷ mọi lệnh cưỡng bức, app hiện "Đang khoá tại tủ"; tắt cưỡng bức ban đêm tối đa 2 giờ và báo nhóm Zalo ngay; mỗi mạch ≤ 4 lần **cưỡng bức đi xa lịch**/giờ (trả về lịch luôn được phép, không bao giờ làm tối đường → trần đóng cắt vật lý ≤ 8 lần/giờ + chuyển theo lịch); tắt cưỡng bức ban đêm **cộng dồn** ≤ 2 giờ/đêm (tính mọi phút có ít nhất một mạch bị tắt cưỡng bức trong lúc lịch của nó đang bật); sửa lịch từ xa ≤ 6 lần/giờ/tủ (API); K3 (HPS) tắt ≥ 15 phút mới được bật lại |
+| T11 | An toàn | công tắc khoá **LOCAL/REMOTE** tại tủ: ở LOCAL → REMOTE_OK = 0, huỷ mọi lệnh cưỡng bức, app hiện "Đang khoá tại tủ"; tắt cưỡng bức ban đêm tối đa 2 giờ, **bắt nhập lý do**, báo nhóm Zalo ngay và báo trước 10′ khi sắp tự bật; mỗi mạch ≤ 4 lần **cưỡng bức đi xa lịch**/giờ (trả về lịch luôn được phép, không bao giờ làm tối đường → trần đóng cắt vật lý ≤ 8 lần/giờ + chuyển theo lịch); tắt cưỡng bức ban đêm **cộng dồn** ≤ 2 giờ/đêm (tính mọi phút có ít nhất một mạch bị tắt cưỡng bức trong lúc lịch của nó đang bật); sửa lịch từ xa ≤ 6 lần/giờ/tủ (API); K3 (HPS) tắt ≥ 15 phút mới được bật lại |
 | T12 | Chạy thử liên tục | 72 giờ trên bộ mô phỏng + tủ thật, có kịch bản rút anten, tắt server, kill gateway, mất nguồn tủ — không lần nào bật/tắt sai theo định nghĩa T3 |
 
 ### 1.3 Ca biên / ca xấu phải chịu được
