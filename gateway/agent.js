@@ -22,12 +22,20 @@ class Gateway {
     this.schedule = saved.schedule || null;
     this.hb = false; this.linkUpSince = null; this.plc = null; this.lastPublish = 0; this.lastPublished = '';
     this.lastHb = 0; this.lastPoll = 0; this.rtcFixAt = 0; this.pendingCmds = []; this.out = null;
+    this.mbBackoff = 0; this.mbNextTry = 0; this.lastPersist = 0; this.lastPersisted = '';
     mqtt.onCommand(cmd => this.onCommand(cmd));
     mqtt.onConfig(cfg => this.onConfig(cfg));
   }
 
-  persist() {
-    this.store.save({ sched: S.serialize(this.sched), lastSeq: this.lastSeq, recentIds: this.recentIds, overrides: this.overrides, schedule: this.schedule });
+  /** Lưu bền. important = lastSeq/lệnh/lịch đổi → ghi ngay; còn lại (bộ đếm, phút tắt đêm) tối đa 1 lần/60 s để đỡ mòn thẻ nhớ. */
+  persist(important = true) {
+    const now = this.clock();
+    if (!important && now - this.lastPersist < 60e3) return;
+    const data = { sched: S.serialize(this.sched), lastSeq: this.lastSeq, recentIds: this.recentIds, overrides: this.overrides, schedule: this.schedule };
+    const key = JSON.stringify(data);
+    if (key === this.lastPersisted) return;
+    try { this.store.save(data); this.lastPersisted = key; this.lastPersist = now; }
+    catch (e) { this.log('persist lỗi', e.message); }          // không làm sập tiến trình / không bỏ ACK
   }
   sun(now) {
     if (this.sunOverride) return this.sunOverride;
@@ -70,13 +78,21 @@ class Gateway {
     if (now - this.lastPoll < POLL_MS) return;
     this.lastPoll = now;
     try {
-      if (!this.modbus.connected) await this.modbus.connect();
+      if (!this.modbus.connected) {
+        if (now < this.mbNextTry) throw new Error('BACKOFF');
+        await this.modbus.connect();
+      }
       this.plc = await this.readPlc();
       if (this.linkUpSince === null) this.linkUpSince = now;
+      this.mbBackoff = 0;
     } catch (e) {
+      if (e.message !== 'BACKOFF') {
+        this.mbBackoff = Math.min(this.mbBackoff ? this.mbBackoff * 2 : 2000, 30000);
+        this.mbNextTry = now + this.mbBackoff;
+      }
       this.plc = null; this.linkUpSince = null; this.modbus.close?.();
       if (this.out) this.out = { ...this.out, remoteEn: false, reasons: ['PLC_LINK_LOST'] };
-      this.publishState(now, true);
+      this.publishState(now);                      // chỉ gửi khi đổi trạng thái hoặc mỗi 60 s
       return;
     }
     const p = this.plc, sun = this.sun(now);
@@ -107,7 +123,7 @@ class Gateway {
       try {
         await this.modbus.writeCoils(POINTS.HB.address, [this.hb, r.out.remoteEn, r.out.req.K1, r.out.req.K2, r.out.req.K3]);
       } catch { this.linkUpSince = null; }
-      this.persist();
+      this.persist(false);
     }
     await this.progressCommands(now);
     this.publishState(now);

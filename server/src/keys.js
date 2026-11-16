@@ -18,6 +18,19 @@ function verifyKey(key, stored) {
   return want.length === h.length && crypto.timingSafeEqual(h, want);
 }
 
+function verifyKeyAsync(key, stored) {
+  return new Promise(resolve => {
+    if (typeof key !== 'string' || typeof stored !== 'string' || key.length > 256) return resolve(false);
+    const p = stored.split('$');
+    if (p.length !== 6 || p[0] !== 'scrypt') return resolve(false);
+    crypto.scrypt(key, Buffer.from(p[4], 'base64'), 32, { N: +p[1], r: +p[2], p: +p[3] }, (err, h) => {
+      if (err) return resolve(false);
+      const want = Buffer.from(p[5], 'base64');
+      resolve(want.length === h.length && crypto.timingSafeEqual(h, want));
+    });
+  });
+}
+
 const b64u = b => Buffer.from(b).toString('base64url');
 function signJwt(payload, secret) {
   const h = b64u(JSON.stringify({ alg: 'HS256', typ: 'JWT' })), p = b64u(JSON.stringify(payload));
@@ -38,4 +51,4 @@ function verifyJwt(token, secret, { aud = 'lavipco', now = Date.now() } = {}) {
   return c;
 }
 
-module.exports = { newGatewayKey, hashKey, verifyKey, signJwt, verifyJwt };
+module.exports = { newGatewayKey, hashKey, verifyKey, verifyKeyAsync, signJwt, verifyJwt };

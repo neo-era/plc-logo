@@ -4,7 +4,9 @@ After=network-online.target time-sync.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=all
+WatchdogSec=60
 User=plcgw
 EnvironmentFile=/etc/plc-gateway.env
 WorkingDirectory=/opt/plc-gateway
@@ -18,6 +20,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/lib/plc-gateway
+# Hệ điều hành chỉ đọc (overlayfs): /var/lib/plc-gateway PHẢI nằm trên phân vùng ghi được, bền khi cúp điện
 StandardOutput=journal
 StandardError=journal
 

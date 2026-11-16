@@ -92,7 +92,7 @@ create table if not exists plc.alert_recipients (
   name       text,
   active     boolean not null default true,
   created_at timestamptz not null default now(),
-  unique (kind, chat_id, station_id)
+  unique nulls not distinct (kind, chat_id, station_id)
 );
 
 -- Mã đăng ký nhận cảnh báo qua Zalo (/dangky <mã>)
@@ -125,6 +125,6 @@ end $$;
 grant usage on schema plc to plc_app;
 grant select, insert on all tables in schema plc to plc_app;
 grant update on plc.stations, plc.alert_recipients, plc.signup_codes to plc_app;
-grant delete on plc.station_users to plc_app;
+grant delete on plc.station_users, plc.state_history to plc_app;
 grant usage on all sequences in schema plc to plc_app;
 revoke update, delete, truncate on plc.commands, plc.command_events, plc.schedule_changes, plc.alerts from plc_app;

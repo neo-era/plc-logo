@@ -7,7 +7,7 @@
  *   MQTT_URL=wss://api.lavipco.vn/mqtt   PLC_HOST=192.168.0.3   PLC_PORT=502
  *   STATE_FILE=/var/lib/plc-gateway/state.json
  */
-const { execFileSync } = require('node:child_process');
+const { execFileSync, execFile } = require('node:child_process');
 const fs = require('node:fs');
 const { Gateway } = require('./agent');
 const { ModbusClient } = require('./modbus-client');
@@ -39,8 +39,14 @@ function main() {
   const timer = setInterval(async () => {
     if (busy) return; busy = true;
     try { await gw.tick(); } catch (e) { log('tick error', e.message); } finally { busy = false; }
-    if (typeof process.send === 'function') process.send('alive');
   }, 1000);
+  // watchdog systemd (Type=notify, WatchdogSec=60): báo sống mỗi 15 s khi vòng lặp còn chạy
+  let lastTickOk = Date.now();
+  const origTick = gw.tick.bind(gw);
+  gw.tick = async () => { await origTick(); lastTickOk = Date.now(); };
+  const notify = msg => { if (process.env.NOTIFY_SOCKET) execFile('systemd-notify', [msg], () => {}); };
+  notify('READY=1');
+  setInterval(() => { if (Date.now() - lastTickOk < 30000) notify('WATCHDOG=1'); }, 15000);
 
   const stop = async () => { clearInterval(timer); modbus.close(); await mqtt.end(); process.exit(0); };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);

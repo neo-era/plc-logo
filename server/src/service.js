@@ -11,6 +11,8 @@ const { sunTimes } = require('../../core/sun');
 const CMD_TTL = 30e3;
 const HISTORY_EVERY = 5 * 60e3;
 const STALE_MS = 90e3;
+const MIN_STATE_GAP = 1000;          // bỏ bản tin trạng thái dồn dập (< 1 s) — chống spam khi lộ khoá
+const HISTORY_DAYS = 90;
 const ACK_STATUSES = ['received', 'applied', 'confirmed', 'failed', 'expired', 'rejected', 'duplicate'];
 
 const sunAt = now => { const d = new Date(now + 7 * 3600e3); return sunTimes(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()); };
@@ -43,6 +45,7 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
   function snapshotFor(st, state, t) {
     const online = !!(st.online && state && t - Number(state.at || 0) < STALE_MS);
     const snap = { ...(state || {}), online, sun: sunAt(t) };
+    if (online && Number.isFinite(state.gwSkewSec) && Math.abs(state.gwSkewSec) > 120) snap.plcClock = { ...(state.plcClock || {}), year: state.plcClock?.year ?? 2026, skewSec: state.gwSkewSec };
     if (online && state && state.req && state.local && state.remoteEn) {
       snap.schedMismatch = ['K1', 'K2', 'K3'].some(c => !state.overrides?.[c] && state.req[c] !== state.local[c]);
     }
@@ -71,9 +74,14 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
   }
 
   // ── từ gateway ────────────────────────────────────────
+  const lastStateAt = new Map();
   async function onState(stationId, state) {
-    if (!state || typeof state !== 'object' || state.stationId !== stationId) return;
+    if (!state || typeof state !== 'object' || Array.isArray(state) || state.stationId !== stationId) return;
     const t = now();
+    if (t - (lastStateAt.get(stationId) || 0) < MIN_STATE_GAP) return;
+    lastStateAt.set(stationId, t);
+    // lệch giờ gateway ↔ server (T6): gateway gửi `at` theo giờ của nó
+    state.gwSkewSec = Number.isFinite(state.at) ? Math.round((state.at - t) / 1000) : null;
     state.at = t;                                   // dùng giờ server để tính "cũ"
     const st = (await q('update plc.stations set last_state = $2, last_state_at = $3, online = true where id = $1 returning *',
       [stationId, JSON.stringify(state), new Date(t)])).rows[0];
@@ -86,6 +94,19 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
     }
     emit({ type: 'state', stationId, state });
     await runAlerts(st, state);
+  }
+
+  /** Trạng thái đệm khi gateway mất MQTT: chỉ ghi lịch sử (không đổi trạng thái hiện tại), tối đa 500 mẫu/lần kết nối. */
+  const histCount = new Map();
+  async function onHist(stationId, msg) {
+    const items = Array.isArray(msg?.items) ? msg.items.slice(0, 20) : [];
+    for (const it of items) {
+      const n = histCount.get(stationId) || 0;
+      if (n >= 500) return;
+      if (!it || typeof it !== 'object' || it.stationId !== stationId || !Number.isFinite(it.at)) continue;
+      histCount.set(stationId, n + 1);
+      await q('insert into plc.state_history(station_id, at, state) values ($1,$2,$3)', [stationId, new Date(it.at), JSON.stringify({ ...it, buffered: true })]);
+    }
   }
 
   async function onAck(stationId, ack) {
@@ -105,11 +126,23 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
 
   async function onOnline(stationId, online) {
     const st = (await q('update plc.stations set online = $2 where id = $1 returning *', [stationId, online])).rows[0];
-    if (st) { emit({ type: 'online', stationId, online }); if (!online) await runAlerts(st, st.last_state); }
+    if (!st) return;
+    emit({ type: 'online', stationId, online });
+    if (online) histCount.set(stationId, 0);
+    if (online && st.schedule) await publish(`lvc/${stationId}/config`, { schedule: st.schedule }, { retain: true });   // broker khởi động lại vẫn có lịch
+    if (!online) await runAlerts(st, st.last_state);
   }
 
   /** Gọi định kỳ (30 s): tủ im lặng quá lâu → coi như offline cho luật cảnh báo. */
+  let lastPurge = 0;
   async function sweep() {
+    const t = now();
+    // lệnh không tới được tủ (không có ACK sau hạn + 10 s) → expired, có lý do
+    await q(`insert into plc.command_events(cmd_id, status, reason, at)
+             select c.cmd_id, 'expired', 'NOT_DELIVERED', $1 from plc.commands c
+             where c.expires_at < $2 and not exists (select 1 from plc.command_events e where e.cmd_id = c.cmd_id and e.status <> 'issued')`,
+      [new Date(t), new Date(t - 10e3)]);
+    if (t - lastPurge > 3600e3) { lastPurge = t; await q('delete from plc.state_history where at < $1', [new Date(t - HISTORY_DAYS * 864e5)]); }
     const rows = (await q('select * from plc.stations')).rows;
     for (const st of rows) {
       const stale = !st.last_state_at || now() - new Date(st.last_state_at).getTime() > STALE_MS;
@@ -184,7 +217,7 @@ function createService({ db, publish, zalo, now = Date.now, log = () => {} }) {
     return rows;
   }
 
-  return { onState, onAck, onOnline, sweep, issueCommand, setSchedule, listStations, commandLog, requireAccess, canAccess,
+  return { onState, onAck, onHist, onOnline, sweep, issueCommand, setSchedule, listStations, commandLog, requireAccess, canAccess,
     getStation, listeners, HttpError };
 }
 

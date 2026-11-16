@@ -13,6 +13,7 @@ function fileStore(file) {
       const fd = fs.openSync(tmp, 'w', 0o600);
       try { fs.writeSync(fd, JSON.stringify(obj)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(tmp, file);
+      try { const d = fs.openSync(path.dirname(file), 'r'); try { fs.fsyncSync(d); } finally { fs.closeSync(d); } } catch { /* một số FS không hỗ trợ fsync thư mục */ }
     },
   };
 }

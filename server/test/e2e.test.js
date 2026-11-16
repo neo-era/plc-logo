@@ -43,9 +43,9 @@ async function stack() {
   const zalo = { sendMessage: async (chat, text) => { zaloSent.push({ chat, text }); return { ok: true }; } };
   let brokerRef;
   const service = createService({ db: pool, publish: (t, o, opt) => brokerRef.publish(t, o, opt), zalo, now: clock });
-  brokerRef = await createBroker({ getStation: id => service.getStation(id), onState: (i, s) => service.onState(i, s),
+  brokerRef = await createBroker({ trustedProxies: ['127.0.0.1'], getStation: id => service.getStation(id), onState: (i, s) => service.onState(i, s),
     onAck: (i, a) => service.onAck(i, a), onOnline: (i, o) => service.onOnline(i, o) });
-  const app = buildApp({ service, broker: brokerRef, db: pool, jwtSecret: SECRET, zaloWebhookSecret: 's'.repeat(32) });
+  const app = buildApp({ service, broker: brokerRef, db: pool, jwtSecret: SECRET, zaloWebhookSecret: 's'.repeat(32), trustedProxies: ['127.0.0.1'] });
   await app.listen({ host: '127.0.0.1', port: 0 });
   const base = `http://127.0.0.1:${app.server.address().port}`;
   const api = async (method, url, tok, body) => {
@@ -63,12 +63,14 @@ async function stack() {
   const mb = createModbus(plc); await new Promise(r => mb.listen(0, '127.0.0.1', r));
   const modbus = new ModbusClient({ host: '127.0.0.1', port: mb.address().port, timeoutMs: 500 });
   let saved = null; const store = { load: () => saved, save: o => { saved = JSON.parse(JSON.stringify(o)); } };
-  const mqtt = createMqttAdapter({ url: `ws://127.0.0.1:${app.server.address().port}/mqtt`, stationId: 'LVC02', key: created.body.gatewayKey, connectFn: mqttLib.connect });
+  // giả lập Caddy: gateway thật đến từ IP 10.0.0.2
+  const viaCaddy = ip => (u, o) => mqttLib.connect(u, { ...o, wsOptions: { headers: { 'X-Forwarded-For': ip } } });
+  const mqtt = createMqttAdapter({ url: `ws://127.0.0.1:${app.server.address().port}/mqtt`, stationId: 'LVC02', key: created.body.gatewayKey, connectFn: viaCaddy('10.0.0.2') });
   const gw = new Gateway({ stationId: 'LVC02', clock, modbus, mqtt, store, ntpSynced: () => true });
   const advance = async ms => { const end = plc.clock + ms; while (plc.clock < end) { plc.run(1000); await gw.tick(); await sleep(2); } };
   const until = async (fn, ms = 60e3) => { const end = plc.clock + ms; while (plc.clock < end) { if (await fn()) return true; await advance(1000); } return false; };
   const stop = async () => { mqtt.client.end(true); modbus.close(); mb.close(); await app.close(); await brokerRef.close(); await pool.end(); };
-  return { pool, plc, service, broker: brokerRef, app, api, base, gw, mqtt, advance, until, stop, zaloSent, key: created.body.gatewayKey, created };
+  return { viaCaddy, pool, plc, service, broker: brokerRef, app, api, base, gw, mqtt, advance, until, stop, zaloSent, key: created.body.gatewayKey, created };
 }
 
 test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
@@ -76,7 +78,8 @@ test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
   try {
     await t.test('tạo tủ trả khoá 1 lần; gateway kết nối, tủ online, lịch đến được gateway', async () => {
       assert.equal(s.created.status, 201); assert.ok(s.key.length >= 32);
-      assert.ok(await s.until(() => s.mqtt.connected, 10e3), 'mqtt chưa kết nối');
+      for (let i = 0; i < 100 && !s.mqtt.connected; i++) await sleep(100);   // thời gian thật (scrypt bất đồng bộ)
+      assert.ok(s.mqtt.connected, 'mqtt chưa kết nối');
       const r = await s.api('PUT', '/plc/stations/LVC02/schedule', token('lam', 'editor'), { schedule: SCHED });
       assert.equal(r.status, 200, JSON.stringify(r.body));
       assert.ok(await s.until(() => s.gw.schedule !== null, 10e3));
@@ -146,11 +149,45 @@ test('đầu-cuối', { skip: !DB && 'cần TEST_DATABASE_URL' }, async t => {
       assert.equal(r.body.error, 'ELR_LOCK');
     });
 
+    await t.test('B1: gói WS hỏng từ người chưa đăng nhập không làm sập dịch vụ', async () => {
+      const WS = require('ws');
+      for (const payload of ['null', 'true', '[]', '"x"', '{"type":"auth","token":5}', '{"type":"subscribe","stationId":{"a":1}}']) {
+        const ws = new WS(s.base.replace('http', 'ws') + '/plc/ws', { headers: { Origin: 'https://neo-era.github.io' } });
+        await new Promise(r => ws.on('open', r)); ws.send(payload); await sleep(50); ws.close();
+      }
+      await sleep(100);
+      assert.equal((await fetch(s.base + '/plc/health')).status, 200);
+    });
+
+    await t.test('B2: 6 lần sai khoá từ IP lạ không chặn gateway thật ở IP khác', async () => {
+      for (let i = 0; i < 6; i++) {
+        const bad = s.viaCaddy('10.0.0.66')(`ws://127.0.0.1:${s.app.server.address().port}/mqtt`, { clientId: 'gw-LVC02', username: 'LVC02', password: 'sai' + i, reconnectPeriod: 0 });
+        await new Promise(r => { bad.on('error', r); bad.on('close', r); }); bad.end(true);
+      }
+      s.mqtt.client.end(true);
+      const m2 = require('../../gateway/mqtt-adapter').createMqttAdapter({ url: `ws://127.0.0.1:${s.app.server.address().port}/mqtt`, stationId: 'LVC02', key: s.key, connectFn: s.viaCaddy('10.0.0.2') });
+      for (let i = 0; i < 50 && !m2.connected; i++) await sleep(100);
+      assert.equal(m2.connected, true, 'gateway thật phải vào được');
+      const blocked = s.viaCaddy('10.0.0.66')(`ws://127.0.0.1:${s.app.server.address().port}/mqtt`, { clientId: 'gw-LVC02', username: 'LVC02', password: s.key, reconnectPeriod: 0 });
+      const res = await new Promise(r => { blocked.on('connect', () => r('connected')); blocked.on('error', () => r('blocked')); blocked.on('close', () => r('blocked')); });
+      assert.equal(res, 'blocked', 'IP dò khoá bị chặn 15 phút'); blocked.end(true);
+      m2.client.end(true);
+    });
+
     await t.test('đổi khoá: phiên gateway đang mở bị ngắt ngay', async () => {
       const r = await s.api('POST', '/plc/stations/LVC02/rotate-key', token('admin', 'admin'));
       assert.equal(r.status, 200);
       await sleep(300);
       assert.equal(s.broker.isConnected('LVC02'), false);
+    });
+
+    await t.test('lệnh không tới được tủ → expired NOT_DELIVERED sau hạn', async () => {
+      await s.pool.query(`update plc.stations set last_state = jsonb_set(jsonb_set(last_state, '{elrLock}', 'false'), '{maint}', 'false') where id = 'LVC02'`);
+      const r = await s.api('POST', '/plc/stations/LVC02/commands', token('lam', 'editor'), { circuit: 'K3', mode: 'auto' });
+      assert.equal(r.status, 202, JSON.stringify(r.body));
+      s.plc.run(45e3); await s.service.sweep();
+      const ev = (await s.pool.query('select status, reason from plc.command_events where cmd_id = $1 order by id', [r.body.cmdId])).rows;
+      assert.deepEqual(ev.map(e => e.status), ['issued', 'expired']); assert.equal(ev[1].reason, 'NOT_DELIVERED');
     });
   } finally { await s.stop(); }
 });

@@ -11,10 +11,11 @@ const crypto = require('node:crypto');
 const { verifyJwt, newGatewayKey, hashKey } = require('./keys');
 const { HttpError } = require('./service');
 
-function buildApp({ service, broker, db, jwtSecret, allowedOrigins = ['https://neo-era.github.io'], zaloWebhookSecret = null, log = () => {} }) {
-  const app = Fastify({ logger: false, bodyLimit: 32 * 1024, trustProxy: true });
+function buildApp({ service, broker, db, jwtSecret, trustedProxies = ['172.30.0.2'], allowedOrigins = ['https://neo-era.github.io'], zaloWebhookSecret = null, log = () => {} }) {
+  const app = Fastify({ logger: false, bodyLimit: 32 * 1024, trustProxy: trustedProxies });
 
   async function userFrom(token) {
+    if (typeof token !== 'string' || token.length > 4096) return null;
     const c = verifyJwt(token, jwtSecret);
     if (!c) return null;
     const role = c.apps && c.apps.plc;
@@ -119,22 +120,38 @@ function buildApp({ service, broker, db, jwtSecret, allowedOrigins = ['https://n
 
   // ── WebSocket ──
   const appWs = new WebSocketServer({ noServer: true, maxPayload: 4096 });
+  const MAX_WS = 300, MAX_SUBS = 10, RECHECK_MS = 60e3;
   appWs.on('connection', ws => {
-    let user = null; const subs = new Set();
+    if (appWs.clients.size > MAX_WS) return ws.close(1013, 'busy');
+    let user = null, token = null; const subs = new Set();
     const t = setTimeout(() => { if (!user) ws.close(4401, 'auth timeout'); }, 5000);
     const send = ev => { if (ws.readyState === 1 && subs.has(ev.stationId)) ws.send(JSON.stringify(ev)); };
+    // kiểm lại định kỳ: token hết hạn / bị khoá / bị gỡ quyền tủ → đóng
+    const recheck = setInterval(async () => {
+      try {
+        if (!user) return;
+        const u = await userFrom(token);
+        if (!u) return ws.close(4401, 'revoked');
+        for (const sid of [...subs]) if (!(await service.canAccess(u, sid))) subs.delete(sid);
+      } catch { ws.close(1011, 'error'); }
+    }, RECHECK_MS);
     service.listeners.add(send);
-    ws.on('close', () => { clearTimeout(t); service.listeners.delete(send); });
+    ws.on('close', () => { clearTimeout(t); clearInterval(recheck); service.listeners.delete(send); });
     ws.on('error', () => {});
     ws.on('message', async raw => {
-      let m; try { m = JSON.parse(raw.toString()); } catch { return; }
-      if (m.type === 'auth' && !user) {
-        user = await userFrom(m.token);
-        if (!user) return ws.close(4401, 'unauthorized');
-        clearTimeout(t); ws.send(JSON.stringify({ type: 'ready' }));
-      } else if (m.type === 'subscribe' && user && typeof m.stationId === 'string') {
-        if (await service.canAccess(user, m.stationId)) { subs.add(m.stationId); ws.send(JSON.stringify({ type: 'subscribed', stationId: m.stationId })); }
-      }
+      try {
+        let m; try { m = JSON.parse(raw.toString()); } catch { return; }
+        if (!m || typeof m !== 'object' || typeof m.type !== 'string') return;
+        if (m.type === 'auth' && !user) {
+          const u = await userFrom(m.token);
+          if (!u) return ws.close(4401, 'unauthorized');
+          user = u; token = m.token;
+          clearTimeout(t); ws.send(JSON.stringify({ type: 'ready' }));
+        } else if (m.type === 'subscribe' && user && typeof m.stationId === 'string' && /^[A-Z0-9-]{1,32}$/.test(m.stationId)) {
+          if (subs.size >= MAX_SUBS) return;
+          if (await service.canAccess(user, m.stationId)) { subs.add(m.stationId); ws.send(JSON.stringify({ type: 'subscribed', stationId: m.stationId })); }
+        }
+      } catch (e) { log('ws error', e.message); try { ws.close(1011, 'error'); } catch {} }
     });
   });
 
